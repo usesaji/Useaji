@@ -1,0 +1,47 @@
+{
+  "name": "web",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint",
+    "check-types": "next typegen && tsc --noEmit",
+    "api:types": "openapi-typescript ../../docs/openapi.json -o src/lib/api/schema.d.ts",
+    "check:api": "node scripts/check-api.mjs",
+    "test:mock": "tsx scripts/e2e-mock.ts"
+  },
+  "dependencies": {
+    "@creit.tech/stellar-wallets-kit": "2.7.1",
+    "@hookform/resolvers": "^5.9.1",
+    "@repo/ui": "workspace:*",
+    "@stellar/stellar-sdk": "^16.2.0",
+    "@tanstack/react-query": "^5.104.1",
+    "@vercel/analytics": "^2.0.1",
+    "axios": "^1.20.0",
+    "input-otp": "^1.4.2",
+    "lucide-react": "^1.52.0",
+    "next": "^16.3.8",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
+    "react-hook-form": "^7.89.0",
+    "react-icons": "^5.5.0",
+    "tslib": "^2.8.1",
+    "zod": "^4.6.5",
+    "zustand": "^5.0.15"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4.3.3",
+    "@types/node": "^26.6.4",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "babel-plugin-react-compiler": "^1.0.0",
+    "eslint": "^9.39.5",
+    "eslint-config-next": "^16.3.8",
+    "openapi-typescript": "^7.9.1",
+    "tailwindcss": "^4.3.3",
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.3"
+  }
+}

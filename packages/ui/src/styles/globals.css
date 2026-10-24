@@ -1,0 +1,433 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+/* ---------------------------------------------------------------------- */
+/* Saji design tokens, shared by every app (landing, web).                */
+/*   Primary   #4100F5  (actions, links, the active nav bar)              */
+/*   Secondary #76E8FF  (cyan highlights)                                 */
+/*   Accent    #FF0084  (alerts, missed payments, recovery)               */
+/*   Neutral   #181D25  (body text)                                       */
+/* Font: DM Sans, loaded by each app's root layout with next/font into    */
+/* `--font-dm-sans` (next/* imports stay in the apps).                    */
+/* Light only: the designs have no dark mode. The role tokens below are   */
+/* what a dark theme would swap.                                          */
+/* ---------------------------------------------------------------------- */
+
+@theme {
+	/* primary shade */
+	--color-primary-darker: #170056;
+	--color-primary-dark-active: #1d006e;
+	--color-primary-dark-hover: #270093;
+	--color-primary-dark: #3100b8;
+	--color-primary-active: #3400c4;
+	--color-primary-hover: #3b00dd;
+	--color-primary: #4100f5;
+	--color-primary-light-active: #c4b0fc;
+	--color-primary-light-hover: #e3d9fe;
+	--color-primary-light: #ece6fe;
+
+	/* secondary shade */
+	--color-secondary-darker: #295159;
+	--color-secondary-dark-active: #356873;
+	--color-secondary-dark-hover: #478b99;
+	--color-secondary-dark: #59aebf;
+	--color-secondary-active: #5ebacc;
+	--color-secondary-hover: #6ad1e6;
+	--color-secondary: #76e8ff;
+	--color-secondary-light-active: #d5f8ff;
+	--color-secondary-light-hover: #eafcff;
+	--color-secondary-light: #f1fdff;
+
+	/* accent shade */
+	--color-accent-darker: #59002e;
+	--color-accent-dark-active: #73003b;
+	--color-accent-dark-hover: #99004f;
+	--color-accent-dark: #bf0063;
+	--color-accent-active: #cc006a;
+	--color-accent-hover: #e60077;
+	--color-accent: #ff0084;
+	--color-accent-light-active: #ffb0d9;
+	--color-accent-light-hover: #ffd9ed;
+	--color-accent-light: #ffe6f3;
+
+	/* neutral shade */
+	--color-neutral-darker: #080a0d;
+	--color-neutral-dark-active: #0b0d11;
+	--color-neutral-dark-hover: #0e1116;
+	--color-neutral-dark: #12161c;
+	--color-neutral-active: #13171e;
+	--color-neutral-hover: #161a21;
+	--color-neutral: #181d25;
+	--color-neutral-light-active: #b7b9bb;
+	--color-neutral-light-hover: #dcddde;
+	--color-neutral-light: #e8e8e9;
+
+	/* neutral greys */
+	--color-neutral-900: #8c8c8c;
+	--color-neutral-800: #aaaaaa;
+	--color-neutral-700: #bfbfbf;
+	--color-neutral-600: #e6e6e6;
+	--color-neutral-500: #ffffff;
+	--color-neutral-comment: #f4f4f4;
+
+	/* success */
+	--color-success-700: #00492e;
+	--color-success-600: #00623e;
+	--color-success-500: #007a4d;
+	--color-success-400: #189567;
+	--color-success-300: #31af81;
+	--color-success-200: #49ca9a;
+	--color-success-100: #6ef2c1;
+	--color-success-50: #d5ffde;
+
+	/* error */
+	--color-error-600: #6c1d00;
+	--color-error-500: #b43000;
+	--color-error-400: #cb0500;
+	--color-error-300: #d26d48;
+	--color-error-200: #e18b6c;
+	--color-error-100: #f0aa90;
+	--color-error-50: #ffdde1;
+
+	/* warning */
+	--color-warning-900: #513d02;
+	--color-warning-800: #6a5003;
+	--color-warning-700: #9c7604;
+	--color-warning-600: #cd9506;
+	--color-warning-500: #ffc107;
+	--color-warning-400: #ffcd39;
+	--color-warning-300: #ffda6a;
+	--color-warning-200: #ffecb5;
+	--color-warning-100: #fff3cd;
+	--color-warning-50: #fff9e6;
+}
+
+/* Role tokens. Names say what they are for:
+     ink           body text           #181D25   ink-muted  labels, captions    #646464
+     line          input borders       #DCDDDE   line-soft  dividers, tracks    #E8E8E9
+     surface       page, cards         #FFFFFF   panel      grey cards          #F8F8F8 */
+:root {
+	--background: #ffffff;
+	--foreground: #181d25;
+	--ink: #181d25;
+	--ink-muted: #646464;
+	--line: #dcddde;
+	--line-soft: #e8e8e9;
+	--surface: #ffffff;
+	--panel: #f8f8f8;
+	--overlay: rgb(0 0 0 / 15%);
+}
+
+@theme inline {
+	--font-sans: var(--font-dm-sans), system-ui, sans-serif;
+
+	--color-background: var(--background);
+	--color-foreground: var(--foreground);
+	--color-ink: var(--ink);
+	--color-ink-muted: var(--ink-muted);
+	--color-line: var(--line);
+	--color-line-soft: var(--line-soft);
+	--color-surface: var(--surface);
+	--color-panel: var(--panel);
+	--color-overlay: var(--overlay);
+
+	/* shadcn component tokens, mapped onto the palette above */
+	--color-border: var(--line-soft);
+	--color-input: var(--line);
+	--color-ring: #4100f5;
+	--color-muted: var(--panel);
+	--color-muted-foreground: var(--ink-muted);
+	--color-accent-foreground: var(--ink);
+	--color-popover: var(--surface);
+	--color-popover-foreground: var(--ink);
+	--color-card: var(--surface);
+	--color-card-foreground: var(--ink);
+	--color-destructive: #cb0500;
+}
+
+@layer base {
+	/* `clip`, not `hidden`: hidden on both html and body turns body into a scroll container that never
+	   scrolls, and then nothing `position: sticky` sticks (sidebars, headers). */
+	html {
+		@apply overflow-x-clip font-sans;
+		/* No `scrollbar-gutter: stable`: a reserved gutter stays white beside a modal's backdrop. Modals
+		   lock scroll instead (`BodyPortal lockScroll`), padding for the scrollbar they hide. */
+	}
+
+	body {
+		@apply overflow-x-clip bg-background text-ink;
+	}
+}
+
+@layer components {
+	.custom-container {
+		@apply mx-auto max-w-325 px-3 sm:px-6 lg:px-8;
+	}
+
+	.dashboard-custom-container {
+		@apply mx-auto max-w-350 px-3 sm:px-6 lg:px-8;
+	}
+
+	.landing-h2 {
+		@apply text-[42px] leading-[99%] lg:text-[52px];
+	}
+
+	.hide-scroll {
+		scrollbar-width: none;
+	}
+
+	.hide-scroll::-webkit-scrollbar {
+		display: none;
+	}
+}
+
+/* ------------------------------------------------------------------------------------------------
+   Motion. Short, purposeful, and off for prefers-reduced-motion.
+   ------------------------------------------------------------------------------------------------ */
+
+/* Content rising into place; stagger with style={{ "--i": index }}. */
+@keyframes ui-rise {
+	from {
+		opacity: 0;
+		transform: translateY(12px);
+	}
+}
+.animate-rise {
+	animation: ui-rise 460ms cubic-bezier(0.2, 0.7, 0.2, 1) backwards;
+	animation-delay: calc(var(--i, 0) * 55ms);
+}
+
+/* A list whose items rise in one after another: put `stagger` on the list. The first ten are
+   staggered; later items arrive with the tenth, so long lists never wait. */
+.stagger > * {
+	animation: ui-rise 460ms cubic-bezier(0.2, 0.7, 0.2, 1) backwards;
+	animation-delay: 450ms;
+}
+.stagger > :nth-child(1) {
+	animation-delay: 0ms;
+}
+.stagger > :nth-child(2) {
+	animation-delay: 50ms;
+}
+.stagger > :nth-child(3) {
+	animation-delay: 100ms;
+}
+.stagger > :nth-child(4) {
+	animation-delay: 150ms;
+}
+.stagger > :nth-child(5) {
+	animation-delay: 200ms;
+}
+.stagger > :nth-child(6) {
+	animation-delay: 250ms;
+}
+.stagger > :nth-child(7) {
+	animation-delay: 300ms;
+}
+.stagger > :nth-child(8) {
+	animation-delay: 350ms;
+}
+.stagger > :nth-child(9) {
+	animation-delay: 400ms;
+}
+
+/* Page content on navigation (dashboard template). */
+@keyframes ui-page {
+	from {
+		opacity: 0;
+		transform: translateY(6px);
+	}
+}
+.animate-page {
+	animation: ui-page 320ms ease-out backwards;
+}
+
+/* Icon discs and success checks popping in. */
+@keyframes ui-pop {
+	0% {
+		opacity: 0;
+		transform: scale(0.6);
+	}
+	70% {
+		transform: scale(1.06);
+	}
+}
+.animate-pop {
+	animation: ui-pop 420ms cubic-bezier(0.2, 0.8, 0.2, 1) backwards;
+	animation-delay: calc(var(--i, 0) * 70ms);
+}
+
+/* A soft "live" pulse (waiting for a vote, a payout settling). */
+@keyframes ui-breathe {
+	50% {
+		opacity: 0.45;
+	}
+}
+.animate-breathe {
+	animation: ui-breathe 1.6s ease-in-out infinite;
+}
+
+/* The full-screen loader's dots. */
+@keyframes ui-dot {
+	0%,
+	80%,
+	100% {
+		transform: scale(0.6);
+		opacity: 0.4;
+	}
+	40% {
+		transform: scale(1);
+		opacity: 1;
+	}
+}
+.loader-dot {
+	animation: ui-dot 1.2s ease-in-out infinite both;
+	animation-delay: calc(var(--i, 0) * 160ms);
+}
+
+/* A plain fade; stagger with --i (admin tables, quiet surfaces). */
+@keyframes ui-fade {
+	from {
+		opacity: 0;
+	}
+}
+.animate-fade {
+	animation: ui-fade 280ms ease-out backwards;
+	animation-delay: calc(var(--i, 0) * 35ms);
+}
+
+/* Progress bars filling from the left when they appear. */
+@keyframes ui-grow {
+	from {
+		transform: scaleX(0);
+	}
+}
+.animate-grow {
+	transform-origin: left;
+	animation: ui-grow 900ms cubic-bezier(0.2, 0.7, 0.2, 1) backwards;
+	animation-delay: 150ms;
+}
+
+/* Banners and alerts dropping into place. */
+@keyframes ui-drop {
+	from {
+		opacity: 0;
+		transform: translateY(-8px);
+	}
+}
+.animate-drop {
+	animation: ui-drop 380ms cubic-bezier(0.2, 0.8, 0.2, 1) backwards;
+}
+
+/* Illustrations bobbing gently (landing). */
+@keyframes ui-float {
+	50% {
+		transform: translateY(-10px);
+	}
+}
+.animate-float {
+	animation: ui-float 6s ease-in-out infinite;
+}
+
+/* A ring spreading from a dot: live status, "your vote is needed". */
+@keyframes ui-ping {
+	75%,
+	100% {
+		transform: scale(2.2);
+		opacity: 0;
+	}
+}
+.animate-ping-soft {
+	animation: ui-ping 1.8s cubic-bezier(0, 0, 0.2, 1) infinite;
+}
+
+/* Loading placeholders: a light sweeping across. */
+@keyframes ui-shimmer {
+	to {
+		transform: translateX(100%);
+	}
+}
+.skeleton {
+	position: relative;
+	overflow: hidden;
+}
+.skeleton::after {
+	content: "";
+	position: absolute;
+	inset: 0;
+	transform: translateX(-100%);
+	background: linear-gradient(90deg, transparent, rgb(255 255 255 / 65%), transparent);
+	animation: ui-shimmer 1.4s ease-in-out infinite;
+}
+
+/* Cards that lift a little under the pointer. */
+.hover-lift {
+	transition:
+		transform 220ms ease,
+		box-shadow 220ms ease;
+}
+@media (hover: hover) {
+	.hover-lift:hover {
+		transform: translateY(-3px);
+		box-shadow: 0 14px 32px -16px rgb(24 29 37 / 22%);
+	}
+}
+
+/* Headline words rising one after another (landing hero). */
+.animate-word {
+	display: inline-block;
+	animation: ui-rise 720ms cubic-bezier(0.2, 0.7, 0.2, 1) backwards;
+	animation-delay: calc(var(--i, 0) * 70ms + 120ms);
+}
+
+/* Scroll reveals (landing): `data-reveal` starts hidden; RevealObserver adds .is-visible. */
+[data-reveal] {
+	opacity: 0;
+	transform: translateY(28px);
+	transition:
+		opacity 700ms ease,
+		transform 820ms cubic-bezier(0.2, 0.7, 0.2, 1);
+	transition-delay: calc(var(--i, 0) * 90ms);
+}
+[data-reveal="left"] {
+	transform: translateX(-32px);
+}
+[data-reveal="right"] {
+	transform: translateX(32px);
+}
+[data-reveal="zoom"] {
+	transform: scale(0.94);
+}
+[data-reveal].is-visible {
+	opacity: 1;
+	transform: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.stagger > *,
+	.animate-rise,
+	.animate-page,
+	.animate-pop,
+	.animate-breathe,
+	.animate-fade,
+	.animate-grow,
+	.animate-drop,
+	.animate-float,
+	.animate-ping-soft,
+	.animate-word,
+	.skeleton::after,
+	.loader-dot {
+		animation: none;
+	}
+	.hover-lift,
+	[data-reveal] {
+		transition: none;
+	}
+	.hover-lift:hover {
+		transform: none;
+	}
+	[data-reveal] {
+		opacity: 1;
+		transform: none;
+	}
+}

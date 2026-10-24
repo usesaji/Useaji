@@ -1,0 +1,18 @@
+packages:
+  - "apps/*"
+  - "packages/*"
+allowBuilds:
+  unrs-resolver: false
+  sharp: false
+  # tsx (scripts/e2e-mock.ts): the platform binary ships as an optional dependency; the postinstall
+  # only double-checks it.
+  esbuild: false
+  # Pulled in by @creit.tech/stellar-wallets-kit: optional native speed-ups
+  # (bufferutil/utf-8-validate for ws; secp256k1 falls back to pure JS) and a
+  # postinstall script — none are needed to run.
+  '@reown/appkit': false
+  bufferutil: false
+  secp256k1: false
+  utf-8-validate: false
+minimumReleaseAgeExclude:
+  - "@creit.tech/stellar-wallets-kit@2.7.1"

@@ -1,0 +1,8 @@
+@import "@repo/ui/globals.css";
+
+/* Let Tailwind scan the shared UI package for the utility classes it uses. */
+@source "../../../../packages/ui/src/**/*.{ts,tsx}";
+
+html {
+	scroll-behavior: smooth;
+}

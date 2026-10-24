@@ -1,0 +1,173 @@
+﻿SAJI MVP 2 – Project Brief
+Overview
+SAJI is a Stellar-powered platform for managing rotating savings groups such as ajo/esusu.
+The existing product already handles the core savings cycle when members make their contributions as expected.
+This sprint extends SAJI with two important capabilities:
+1. Collective group governance — allowing members to create proposals and vote on important group decisions.
+2. Default and recovery management — automatically detecting missed contributions and letting the group decide how the savings cycle should recover.
+The goal is to reduce dependence on a single group coordinator by making important decisions transparent, rule-based, and verifiable through Soroban.
+Sprint Goal
+SAJI should extend its existing Stellar Testnet product so that:
+* Members can create governance proposals
+* Members can vote on proposals
+* Groups can define approval thresholds
+* Approved proposals can automatically execute
+* Members can vote to pause/resume a savings group
+* Members can approve permitted changes to future payout schedules
+* Missed contributions can be automatically detected
+* Defaults are recorded on-chain
+* Affected savings cycles enter a recovery state
+* Members can vote on permitted recovery actions
+* Approved recovery actions can execute
+* The savings cycle can resume after resolution
+Core Features
+1. Group Governance
+Each savings group should have an on-chain governance system that allows members to collectively make supported decisions.
+The governance system should allow:
+* Proposal creation
+* Member voting
+* Approval thresholds
+* Proposal status tracking
+* Automatic execution of approved actions
+Governance should integrate with SAJI's existing savings-group contracts.
+2. Proposal Creation
+Eligible group members should be able to create proposals for supported actions.
+A proposal should include:
+* Proposal type
+* Description
+* Proposed action
+* Voting status
+* Approval threshold
+* Voting results
+* Proposal outcome
+Only supported actions defined by the contract should be executable.
+3. Member Voting
+Members should be able to review active proposals and cast their vote.
+A simple flow should be:
+1. Member opens proposal
+2. Reviews proposed action
+3. Casts vote
+4. Vote is recorded
+5. Proposal progress updates
+6. Approval threshold is checked
+Members should clearly see whether a proposal is active, approved, rejected, or executed.
+4. Approval Thresholds
+Savings groups should be able to use configurable approval thresholds for governance decisions.
+For example, a proposal may require a defined percentage or number of group members to approve before it can execute.
+The contract should automatically determine whether the required threshold has been reached.
+5. Proposal Execution
+Once a proposal reaches its required approval threshold, the supported action should be executable through Soroban.
+Initial supported governance actions should include:
+* Pause savings group
+* Resume savings group
+* Approve permitted changes to future payout schedules
+The resulting action and contract state should be verifiable on Stellar Testnet.
+6. Missed Contribution Detection
+SAJI should automatically detect when a member fails to make a required contribution before the defined deadline.
+The system should:
+* Check contribution deadlines
+* Identify missed contributions
+* Record the default on-chain
+* Identify the affected member/contribution
+* Update the savings-cycle state
+This should happen according to predefined contract rules rather than depending on manual intervention from a coordinator.
+7. Default State
+When a missed contribution is detected, the affected savings cycle should enter a defined recovery state.
+The interface should clearly communicate:
+* That a default has occurred
+* Which contribution was missed
+* Current cycle status
+* That group action is required
+* Available permitted recovery actions
+The normal savings cycle should not simply continue while the default remains unresolved.
+8. Recovery Proposal & Voting
+The default mechanism should integrate directly with the governance system.
+Members should be able to vote on a permitted recovery action.
+The flow should be:
+Missed Contribution → Default Detected → Recovery State → Recovery Proposal → Member Voting → Approval → Action Execution → Cycle Resumes
+This ensures that recovery decisions are collectively approved rather than made by a single coordinator.
+9. Savings Cycle Recovery
+Once the required approval threshold is reached, the approved recovery action should execute.
+The contract should then update the savings cycle based on the approved resolution.
+After the recovery action is successfully completed, the savings cycle should be able to resume.
+10. Governance & Recovery Activity
+Members should be able to understand the history and current status of important group decisions.
+The interface should provide visibility into:
+* Active proposals
+* Completed proposals
+* Voting progress
+* Proposal results
+* Executed actions
+* Defaults
+* Recovery status
+* Relevant Stellar/Soroban transaction references
+Key Screens for Design
+The design team should focus on extending the existing SAJI interface with:
+1. Group Dashboard
+2. Governance / Proposals
+3. Create Proposal
+4. Proposal Details
+5. Voting Screen
+6. Proposal Result / Execution Status
+7. Missed Contribution Alert
+8. Default / Recovery State
+9. Create/View Recovery Proposal
+10. Recovery Voting
+11. Recovery Resolution
+12. Governance & Recovery History
+The experience should remain consistent with the existing SAJI product.
+Users should understand concepts such as proposal, vote, missed contribution, recovery, and approval without needing to understand Soroban or smart-contract infrastructure.
+Technical Requirements
+Network
+* Stellar Testnet
+* Soroban smart contracts
+Existing SAJI Contracts
+The new functionality should extend and integrate with SAJI's existing savings contracts rather than operate as an unrelated product.
+Governance Contract Logic
+The system should support:
+* Proposal creation
+* Member voting
+* Configurable approval thresholds
+* Proposal state
+* Approved action execution
+* Integration with existing savings-group contracts
+Initial Governance Actions
+The governance system should initially support:
+* Pause group
+* Resume group
+* Permitted changes to future payout schedules
+Default Detection
+The savings contract should support:
+* Contribution deadlines
+* Missed-contribution detection
+* On-chain default records
+* Recovery state
+* Governance-triggered recovery
+Recovery Logic
+The system should connect default handling with governance so that:
+* Default triggers recovery state
+* Members vote on permitted resolution
+* Approval threshold is checked
+* Approved action executes
+* Savings cycle resumes
+Definition of Done
+The sprint is complete when:
+* A group member can create a supported proposal
+* Members can vote on proposals
+* Configurable approval thresholds can determine proposal approval
+* An approved proposal can execute through Soroban
+* Members can vote to pause/resume a group
+* Members can approve permitted changes to future payout schedules
+* SAJI can detect a missed contribution after its deadline
+* The missed contribution is recorded as a default on-chain
+* The affected savings cycle enters a recovery state
+* Members can vote on a permitted recovery action
+* An approved recovery action can execute
+* The savings cycle can resume after recovery
+* Governance and recovery actions can be verified on Stellar Testnet
+Final Product Goal
+SAJI should allow savings groups to manage important decisions and contribution problems collectively instead of relying on a single coordinator.
+The governance experience should be:
+Create a proposal. Vote together. Reach the threshold. Execute the decision.
+The recovery experience should be:
+Detect the missed contribution. Pause the cycle. Decide together. Execute the resolution. Resume saving.
