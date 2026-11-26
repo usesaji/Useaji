@@ -3,6 +3,7 @@
 import { useWalletStore } from "@/features/wallet/store";
 import { LIVE_WALLET } from "@/lib/api/source";
 import type { PaymentInstructionsDto } from "@/lib/api/dto";
+import type { UsdcKind } from "@/lib/stellar/config";
 
 /**
  * The wallet surface the screens use. Live: the real wallets through Stellar Wallets Kit
@@ -70,13 +71,26 @@ export async function fundTestnetAccount(address: string) {
 	await (await import("@/features/wallet/stellarKit")).fundAccount(address);
 }
 
-/** Real wallets only (the simulated one always holds USDC): one signature, then Horizon. */
-export async function addUsdcTrustline(address: string) {
+/** Real wallets only (the simulated one always holds both): one signature, then Horizon. */
+export async function addUsdcTrustline(address: string, kind: UsdcKind) {
 	if (!LIVE_WALLET) return;
-	await (await import("@/features/wallet/stellarKit")).addUsdcTrustline(address);
+	await (await import("@/features/wallet/stellarKit")).addUsdcTrustline(address, kind);
 }
 
-export async function walletUsdc(address: string) {
+/** One of the wallet's test USDCs: its balance, and whether the wallet can hold it. */
+export interface UsdcHolding {
+	usdc: string;
+	trustline: boolean;
+}
+
+/** The wallet's Testnet account: whether it exists, and its group and savings USDC. */
+export interface WalletUsdc {
+	funded: boolean;
+	group: UsdcHolding;
+	savings: UsdcHolding;
+}
+
+export async function walletUsdc(address: string): Promise<WalletUsdc> {
 	return (await source()).usdcBalance(address);
 }
 

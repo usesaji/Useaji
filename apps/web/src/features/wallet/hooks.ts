@@ -28,6 +28,7 @@ import {
 	walletUsdc,
 } from "@/features/wallet/kit";
 import { ApiError } from "@/lib/api/client";
+import type { UsdcKind } from "@/lib/stellar/config";
 import { errorMessage } from "@/features/auth/hooks";
 import { isReauthCancelled, withIdentity } from "@/features/auth/reauth";
 import type { AddDestinationDto } from "@/lib/api/dto";
@@ -78,13 +79,16 @@ export function useLinkWallet() {
 	return { ...mutation, step };
 }
 
+/** Lets the wallet hold one of the test USDCs (`group`: Circle's, `savings`: Saji's). */
 export function useAddUsdcTrustline() {
 	const queryClient = useQueryClient();
 	return useMutation({
-		mutationFn: async (address: string) => addUsdcTrustline(await walletFor(address)),
-		onSuccess: () => {
+		mutationFn: async ({ address, kind }: { address: string; kind: UsdcKind }) => addUsdcTrustline(await walletFor(address), kind),
+		onSuccess: (_, { kind }) => {
 			void queryClient.invalidateQueries({ queryKey: ["wallet", "usdc"] });
-			toast.success("USDC enabled", { description: "Your wallet can now hold and pay Testnet USDC." });
+			toast.success("USDC enabled", {
+				description: kind === "group" ? "Your wallet can now hold the USDC groups use." : "Your wallet can now hold the USDC personal savings use.",
+			});
 		},
 		onError: (error) => {
 			if (isWalletDismissal(error)) toast.info("Cancelled");
@@ -143,7 +147,8 @@ export function useGetTestUsdc() {
 					setStep("fund");
 					await fundTestnetAccount(linked);
 				}
-				if (!balance.trustline) {
+				// The faucet issues Saji's test USDC: the one personal savings and slot purchases use.
+				if (!balance.savings.trustline) {
 					setStep("trustline");
 					try {
 						const { xdr } = await prepareFaucetTrustline();
@@ -160,7 +165,9 @@ export function useGetTestUsdc() {
 		},
 		onSuccess: (sent) => {
 			void queryClient.invalidateQueries({ queryKey: ["wallet", "usdc"] });
-			toast.success("Test USDC sent", { description: `${Number(sent.amount).toLocaleString()} test USDC is on its way to your wallet.` });
+			toast.success("Test USDC sent", {
+				description: `${Number(sent.amount).toLocaleString()} test USDC for personal savings is on its way to your wallet.`,
+			});
 		},
 		onError: (error) => {
 			if (isWalletDismissal(error)) toast.info("Cancelled", { description: "Your wallet wasn't changed." });

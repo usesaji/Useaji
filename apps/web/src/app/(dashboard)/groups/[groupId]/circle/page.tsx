@@ -80,7 +80,17 @@ export default function CirclePage() {
 	const paidCount = c.contributions.filter((x) => x.paid).length;
 	const pastDeadline = !!c.deadline && now > 0 && new Date(c.deadline).getTime() < now;
 	const paidOutTotal = Number(c.totalPaidOut);
-	const iPaid = c.contributions.some((x) => x.member.userId === me && x.paid);
+	const myRow = c.contributions.find((x) => x.member.userId === me);
+	const iPaid = !!myRow?.paid;
+	// I took this slot over after its previous holder paid this round: that payment counts for me.
+	const coveredForMe = !!myRow?.coveredByPreviousHolder;
+	// On Stellar (chainSync is null only in simulated mode) but the escrow isn't there yet: right
+	// after Start the API is still creating it, and contributions wait a few seconds.
+	const settingUp = !!c.chainSync && !c.isLive;
+	// Everyone has paid and the round hasn't turned yet: the payout is on its way (the API's scanner
+	// can take a few minutes on Testnet).
+	const allPaid =
+		!completed && !c.paused && c.openDefaults.length === 0 && c.contributions.length > 0 && c.contributions.every((x) => x.paid);
 	const openProposals = open.data?.results ?? [];
 	const faces = c.schedule.map((s) => s.member);
 	const memberCount = g.memberCount;
@@ -89,7 +99,7 @@ export default function CirclePage() {
 	const ownStatus = myDefault
 		? { value: `${formatMoney(myDefault.amount, g.asset)} overdue`, tone: "pink" as const }
 		: iPaid
-			? { value: recipientIsMe ? "Paid · you collect" : "Paid", tone: "green" as const }
+			? { value: coveredForMe ? "Paid by the previous holder" : recipientIsMe ? "Paid · you collect" : "Paid", tone: "green" as const }
 			: c.myAmountDue
 				? { value: `${formatMoney(c.myAmountDue, g.asset)} due`, tone: "pink" as const }
 				: { value: recipientIsMe ? "Your turn to collect" : "Nothing due", tone: recipientIsMe ? ("green" as const) : undefined };
@@ -99,10 +109,14 @@ export default function CirclePage() {
 			? PAY_PHASE_LABEL[contribute.phase]
 			: c.paused
 				? "Group paused"
-				: c.myAmountDue
+				: settingUp
+					? "Setting up on Stellar…"
+					: c.myAmountDue
 					? `Pay ${formatMoney(c.myAmountDue, g.asset)}`
 					: iPaid
-						? "Paid this round"
+						? coveredForMe
+							? "Paid by the previous holder"
+							: "Paid this round"
 						: "Nothing due";
 
 	// What needs attention, most urgent first.
@@ -145,6 +159,10 @@ export default function CirclePage() {
 		<Banner tone="lilac" title="Every round has been paid out" href={routes.GROUP_COMPLETE(groupId)} cta="Cycle summary">
 			The group has completed its rotation.
 		</Banner>
+	) : settingUp ? (
+		<Banner tone="lilac" title="Setting up the group on Stellar">
+			The group&apos;s escrow account is being created. Contributions open in a few seconds.
+		</Banner>
 	) : c.myAmountDue ? (
 		<Banner
 			tone={pastDeadline ? "pink" : "lilac"}
@@ -153,6 +171,15 @@ export default function CirclePage() {
 			{pastDeadline
 				? `The deadline has passed — this includes the late fee. Pay before the grace period ends (${shortDate(c.graceEndsAt)}) or it's recorded as missed.`
 				: `Your round ${round + 1} contribution is due by ${shortDate(c.deadline)}.${recipientIsMe ? " You collect this round's pot once everyone has paid." : " Keep enough USDC in your wallet to avoid the late fee."}`}
+		</Banner>
+	) : allPaid ? (
+		<Banner tone="lilac" title={`Everyone has paid round ${round + 1}`}>
+			{recipientIsMe ? "Your payout is" : `The payout to ${c.recipient ? name(c.recipient) : "this round's recipient"} is`} on its way. It can take a
+			few minutes on Stellar.
+		</Banner>
+	) : coveredForMe ? (
+		<Banner tone="lilac" title="This round is covered">
+			You took this slot over after its previous holder paid round {round + 1}, so it counts for you. You pay from the next round.
 		</Banner>
 	) : recipientIsMe ? (
 		<Banner tone="lilac" title="It's your turn to collect this round">
@@ -294,7 +321,7 @@ export default function CirclePage() {
 							<button
 								type="button"
 								onClick={() => contribute.mutate(c)}
-								disabled={contribute.isPending || !c.myAmountDue}
+								disabled={contribute.isPending || !c.myAmountDue || settingUp}
 								className="h-12 flex-1 rounded-full bg-primary text-sm text-white shadow-lg transition hover:bg-primary-hover disabled:cursor-not-allowed disabled:bg-neutral-light-hover disabled:text-neutral-light-active disabled:shadow-none md:max-w-xs md:text-base"
 							>
 								{payLabel}

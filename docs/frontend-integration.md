@@ -1,4 +1,4 @@
-# SAJI v3 frontend integration guide
+# SAJI v3 frontend integration guide.......
 
 This guide covers every API added or changed in v3:
 - the savings slot marketplace;

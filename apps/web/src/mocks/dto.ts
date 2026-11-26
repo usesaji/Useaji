@@ -15,7 +15,7 @@ import {
 	userById,
 } from "@/mocks/engine";
 import { explorerTx } from "@/mocks/ids";
-import { USDC_ISSUER } from "@/lib/stellar/config";
+import { GROUP_USDC_ISSUER } from "@/lib/stellar/config";
 import type {
 	MockDb,
 	MockDefault,
@@ -171,7 +171,7 @@ export function defaultDto(db: MockDb, d: MockDefault, at: number, viewerId?: st
 				? {
 						destination: g.cycle.escrowAccount,
 						assetCode: g.asset,
-						assetIssuer: USDC_ISSUER,
+						assetIssuer: GROUP_USDC_ISSUER,
 						amount: d.amount,
 						memo: roundMemo(g, d.round),
 					}
@@ -271,7 +271,7 @@ export function cycleDto(db: MockDb, g: MockGroup, viewerId: string, at: number)
 				: {
 						destination: cycle.escrowAccount,
 						assetCode: g.asset,
-						assetIssuer: USDC_ISSUER,
+						assetIssuer: GROUP_USDC_ISSUER,
 						amount: money(due),
 						memo: roundMemo(g, round),
 					},

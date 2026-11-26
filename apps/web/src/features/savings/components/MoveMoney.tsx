@@ -81,7 +81,9 @@ function MoveForm({ plan, mode }: { plan: PlanDto; mode: Mode }) {
 	const locked = mode === "withdraw" && !plan.canWithdraw && Number(plan.balance) > 0;
 	const withdrawable = plan.canWithdraw ? Number(plan.balance) : 0;
 	const value = Number(amount);
-	const available = mode === "deposit" ? (walletUsdc.data ? Number(walletUsdc.data.usdc) : null) : withdrawable;
+	// Deposits are in Saji's test USDC (the savings one), not the USDC groups use.
+	const savingsUsdc = walletUsdc.data?.savings;
+	const available = mode === "deposit" ? (savingsUsdc ? Number(savingsUsdc.usdc) : null) : withdrawable;
 	const error = !amount.trim()
 		? "Enter an amount"
 		: !AMOUNT.test(amount.trim()) || value <= 0
@@ -158,8 +160,10 @@ function MoveForm({ plan, mode }: { plan: PlanDto; mode: Mode }) {
 							disabled={move.isPending || locked}
 							error={touched ? error : null}
 							description={
-								mode === "deposit" && walletUsdc.data
-									? `Wallet balance · ${formatMoney(walletUsdc.data.usdc, plan.asset)}`
+								mode === "deposit" && savingsUsdc
+									? savingsUsdc.trustline
+										? `Savings USDC in your wallet · ${formatMoney(savingsUsdc.usdc, plan.asset)}`
+										: "Your wallet can't hold the savings USDC yet: enable it on the Wallet page."
 									: undefined
 							}
 						/>

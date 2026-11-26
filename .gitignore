@@ -25,6 +25,7 @@ coverage
 .next/
 .next-verify/
 .next-demo/
+.next-audit/
 out/
 build
 dist

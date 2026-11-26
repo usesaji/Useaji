@@ -254,7 +254,7 @@ async function main() {
 
 	// Ada asks for Dami's slot in Community Circle; Dami picks her, the members approve, Ada accepts.
 	const owner = me.wallet!.publicKey;
-	const walletBefore = Number((await mockWallet.usdcBalance(owner)).usdc);
+	const walletBefore = Number((await mockWallet.usdcBalance(owner)).savings.usdc);
 	let asked = await slots.requestTakeover(circleListing.id);
 	ok(asked.requested && asked.buyerEligibility?.checks.find((c) => c.key === "notRequested")?.ok === false, "Ada asks for slot 7");
 	ok((await slots.requestTakeover(circleListing.id)).requested, "asking again is a no-op");
@@ -274,7 +274,7 @@ async function main() {
 	const bought = await slots.acceptListing(circleListing.id, { signedXdr: signedAccept });
 	ok(bought.status === "sold", "Ada accepts: one signature, the slot is hers");
 	ok((await slots.acceptListing(circleListing.id, { signedXdr: signedAccept })).status === "sold", "repeating the accept returns the same result");
-	ok(Math.abs(walletBefore - 20 - Number((await mockWallet.usdcBalance(owner)).usdc)) < 1e-6, "she paid the 20 USDC asking price");
+	ok(Math.abs(walletBefore - 20 - Number((await mockWallet.usdcBalance(owner)).savings.usdc)) < 1e-6, "she paid the 20 USDC asking price");
 	const community = bought.group.id;
 	const cc = await circle.getCycle(community);
 	const myRow = cc.contributions.find((x) => x.member.userId === me.id);
@@ -373,7 +373,7 @@ async function main() {
 	ok(rent.ownerAddress === owner && rent.balance === "0.00" && !rent.canWithdraw && !!rent.txUrl, "confirmed: the linked wallet owns the goal");
 	ok((await savings.confirmSavingsPlan(prepared.planId, { signedXdr: await sign(prepared.xdr!) })).id === rent.id, "confirming twice returns the same goal");
 
-	const before = Number((await mockWallet.usdcBalance(owner)).usdc);
+	const before = Number((await mockWallet.usdcBalance(owner)).savings.usdc);
 	await expectError(savings.prepareDeposit(rent.id, { amount: "1000000" }), 400, "can't deposit more than the wallet holds");
 	const signedDeposit = await sign((await savings.prepareDeposit(rent.id, { amount: "15.00" })).xdr);
 	await expectError(savings.confirmDeposit(rent.id, {}), 400, "a deposit needs the signed transaction");
@@ -389,7 +389,7 @@ async function main() {
 	);
 	await expectError(savings.prepareWithdrawal(rent.id, { amount: "21.00" }), 409, "can't withdraw more than the balance");
 	await savings.confirmWithdrawal(rent.id, { signedXdr: await sign((await savings.prepareWithdrawal(rent.id, { amount: "4.00" })).xdr) });
-	const after = Number((await mockWallet.usdcBalance(owner)).usdc);
+	const after = Number((await mockWallet.usdcBalance(owner)).savings.usdc);
 	const relocked = await savings.getSavingsPlan(rent.id);
 	ok(
 		relocked.balance === "16.00" && !relocked.canWithdraw && Math.abs(after - (before - 20 + 4)) < 1e-6,
@@ -418,9 +418,9 @@ async function main() {
 
 	// ---- test USDC faucet (testnet; the simulated wallet already trusts USDC)
 	await expectError(wallet.prepareFaucetTrustline(), 409, "the faucet's trustline step: already trusts USDC");
-	const usdcBefore = Number((await mockWallet.usdcBalance(owner)).usdc);
+	const usdcBefore = Number((await mockWallet.usdcBalance(owner)).savings.usdc);
 	const sent = await wallet.requestTestUsdc();
-	ok(sent.amount === "1000" && Number((await mockWallet.usdcBalance(owner)).usdc) === usdcBefore + 1000, "the faucet sends 1,000 test USDC");
+	ok(sent.amount === "1000" && Number((await mockWallet.usdcBalance(owner)).savings.usdc) === usdcBefore + 1000, "the faucet sends 1,000 test USDC");
 	await expectError(wallet.requestTestUsdc(), 429, "the faucet gives once per wallet per hour");
 
 	await expectError(groups.getGroup("00000000-0000-0000-0000-000000000000"), 404, "unknown group");

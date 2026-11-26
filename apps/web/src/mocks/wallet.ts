@@ -48,9 +48,10 @@ export async function transactionHash(signedXdr: string) {
 	return hashOf(signedXdr);
 }
 
+/** The simulated wallet keeps one balance and shows it for both test USDCs (group and savings). */
 export async function usdcBalance(address: string) {
-	const balance = readDb().walletBalances[address];
-	return { usdc: money(num(balance ?? "0")), funded: true, trustline: true };
+	const usdc = money(num(readDb().walletBalances[address] ?? "0"));
+	return { funded: true, group: { usdc, trustline: true }, savings: { usdc, trustline: true } };
 }
 
 export async function disconnect() {}

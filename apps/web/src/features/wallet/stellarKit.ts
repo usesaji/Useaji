@@ -3,7 +3,7 @@
 import type { StellarWalletsKit as Kit } from "@creit.tech/stellar-wallets-kit/sdk";
 import type { ModuleInterface } from "@creit.tech/stellar-wallets-kit/types";
 import type { PaymentInstructionsDto } from "@/lib/api/dto";
-import { FRIENDBOT_URL, HORIZON_URL, NETWORK_PASSPHRASE, USDC_ISSUER } from "@/lib/stellar/config";
+import { FRIENDBOT_URL, GROUP_USDC_ISSUER, HORIZON_URL, NETWORK_PASSPHRASE, USDC_ISSUERS, type UsdcKind } from "@/lib/stellar/config";
 
 /**
  * The real wallets, through Stellar Wallets Kit: Freighter, xBull, Albedo, LOBSTR, Hana (browser)
@@ -68,7 +68,7 @@ export async function pay(instructions: PaymentInstructionsDto, address: string)
 	const server = new Horizon.Server(HORIZON_URL);
 	const account = await server.loadAccount(address);
 	const asset =
-		instructions.assetCode === "XLM" ? Asset.native() : new Asset(instructions.assetCode, instructions.assetIssuer ?? USDC_ISSUER);
+		instructions.assetCode === "XLM" ? Asset.native() : new Asset(instructions.assetCode, instructions.assetIssuer ?? GROUP_USDC_ISSUER);
 	const tx = new TransactionBuilder(account, { fee: BASE_FEE, networkPassphrase: NETWORK_PASSPHRASE })
 		.addOperation(Operation.payment({ destination: instructions.destination, asset, amount: instructions.amount }))
 		.addMemo(Memo.text(instructions.memo))
@@ -78,14 +78,14 @@ export async function pay(instructions: PaymentInstructionsDto, address: string)
 	return submit(signedTxXdr, instructions.assetCode);
 }
 
-/** Opens a USDC trustline so the wallet can hold (and pay) Testnet USDC. Only the account's own key can. */
-export async function addUsdcTrustline(address: string) {
+/** Opens a trustline so the wallet can hold (and pay) one of the test USDCs. Only the account's own key can. */
+export async function addUsdcTrustline(address: string, kind: UsdcKind) {
 	const kit = await loadKit();
 	const { Asset, BASE_FEE, Horizon, Operation, TransactionBuilder } = await import("@stellar/stellar-sdk");
 	const server = new Horizon.Server(HORIZON_URL);
 	const account = await server.loadAccount(address);
 	const tx = new TransactionBuilder(account, { fee: BASE_FEE, networkPassphrase: NETWORK_PASSPHRASE })
-		.addOperation(Operation.changeTrust({ asset: new Asset("USDC", USDC_ISSUER) }))
+		.addOperation(Operation.changeTrust({ asset: new Asset("USDC", USDC_ISSUERS[kind]) }))
 		.setTimeout(180)
 		.build();
 	const { signedTxXdr } = await kit.signTransaction(tx.toXDR(), { address, networkPassphrase: NETWORK_PASSPHRASE });
@@ -121,17 +121,21 @@ export async function fundAccount(address: string) {
 	throw new Error("Friendbot couldn’t fund this wallet. Try again in a moment.");
 }
 
-/** The wallet's USDC on Testnet, from Horizon (public, read-only). */
+/** The wallet's two test USDCs on Testnet (group and savings), from Horizon (public, read-only). */
 export async function usdcBalance(address: string) {
 	// Horizon Testnet sometimes leaves a request hanging; give up rather than spin forever.
 	const response = await fetch(`${HORIZON_URL}/accounts/${encodeURIComponent(address)}`, { signal: AbortSignal.timeout(15_000) }).catch(() => {
 		throw new Error("We couldn’t read your balance from Stellar Testnet. Try again in a moment.");
 	});
-	if (response.status === 404) return { usdc: "0", funded: false, trustline: false };
+	const none = { usdc: "0", trustline: false };
+	if (response.status === 404) return { funded: false, group: none, savings: none };
 	if (!response.ok) throw new Error("We couldn’t read your balance from Stellar Testnet. Try again in a moment.");
 	const account = (await response.json()) as { balances: { asset_code?: string; asset_issuer?: string; balance: string }[] };
-	const usdc = account.balances.find((b) => b.asset_code === "USDC" && b.asset_issuer === USDC_ISSUER);
-	return { usdc: usdc ? String(Number(usdc.balance)) : "0", funded: true, trustline: !!usdc };
+	const of = (kind: UsdcKind) => {
+		const line = account.balances.find((b) => b.asset_code === "USDC" && b.asset_issuer === USDC_ISSUERS[kind]);
+		return { usdc: line ? String(Number(line.balance)) : "0", trustline: !!line };
+	};
+	return { funded: true, group: of("group"), savings: of("savings") };
 }
 
 export async function disconnect() {

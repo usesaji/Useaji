@@ -20,7 +20,8 @@ import type { WalletSummaryDto } from "@/lib/api/dto";
 import { Money } from "@/components/Money";
 import { formatMoney, relative } from "@/lib/format";
 import { pageRoutes } from "@/lib/routes";
-import { explorerAccountUrl, shortAddress } from "@/lib/stellar/config";
+import type { UsdcHolding } from "@/features/wallet/kit";
+import { explorerAccountUrl, GROUP_USDC_FAUCET_URL, shortAddress, type UsdcKind } from "@/lib/stellar/config";
 import { useNow } from "@/lib/use-now";
 
 /**
@@ -109,9 +110,10 @@ export function LinkedWalletCard({ wallet }: { wallet: WalletSummaryDto }) {
 const inlineAction = "text-primary underline-offset-4 hover:underline disabled:opacity-50";
 
 /**
- * The wallet on Testnet: its USDC, and what it still needs. With the API's faucet on (testnet), one
- * button does the whole setup — create the account (Friendbot), add Saji's test USDC, get 1,000 —
- * and later tops it up (once an hour). With the faucet off, only the steps the wallet can do itself.
+ * The wallet on Testnet, and what it still needs. Two test USDCs live on Testnet: groups take
+ * Circle's (from Circle's faucet), personal savings and slot purchases take Saji's (from the API's
+ * faucet: one button adds it to the wallet and sends 1,000, once an hour; hidden when the faucet is
+ * off). Each row shows that USDC's balance, or the button that lets the wallet hold it.
  */
 function TestnetSetup({ address }: { address: string }) {
 	const { data: usdc } = useWalletUsdc(address);
@@ -120,19 +122,6 @@ function TestnetSetup({ address }: { address: string }) {
 	const fund = useFundTestnetAccount();
 	const trustline = useAddUsdcTrustline();
 	if (!usdc) return null;
-	const ready = usdc.funded && usdc.trustline;
-
-	if (faucetOn) {
-		const label = getUsdc.isPending ? FAUCET_STEP_LABEL[getUsdc.step] : ready ? "Get test USDC" : "Set up wallet & get test USDC";
-		return (
-			<p className={`mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs ${ready ? "text-ink-muted" : "text-accent"}`}>
-				{ready ? `${formatMoney(usdc.usdc, "USDC")} in this wallet ·` : "This wallet isn't set up for Testnet USDC yet."}
-				<button type="button" onClick={() => getUsdc.mutate(address)} disabled={getUsdc.isPending} className={inlineAction}>
-					{label}
-				</button>
-			</p>
-		);
-	}
 	if (!usdc.funded) {
 		return (
 			<p className="mt-1 flex flex-wrap items-center gap-2 text-xs text-accent">
@@ -143,17 +132,44 @@ function TestnetSetup({ address }: { address: string }) {
 			</p>
 		);
 	}
-	if (!usdc.trustline) {
-		return (
-			<p className="mt-1 flex flex-wrap items-center gap-2 text-xs text-accent">
-				This wallet can&apos;t hold USDC yet.
-				<button type="button" onClick={() => trustline.mutate(address)} disabled={trustline.isPending} className={inlineAction}>
-					{trustline.isPending ? "Confirm in your wallet…" : "Enable USDC"}
-				</button>
-			</p>
-		);
-	}
-	return <p className="mt-1 text-xs text-ink-muted">{formatMoney(usdc.usdc, "USDC")} in this wallet</p>;
+	const enable = (kind: UsdcKind) => (
+		<button type="button" onClick={() => trustline.mutate({ address, kind })} disabled={trustline.isPending} className={inlineAction}>
+			{trustline.isPending && trustline.variables?.kind === kind ? "Confirm in your wallet…" : "Enable"}
+		</button>
+	);
+	return (
+		<dl className="mt-2 space-y-1 text-xs">
+			<UsdcRow label="For groups" holding={usdc.group}>
+				{usdc.group.trustline ? (
+					<a href={GROUP_USDC_FAUCET_URL} target="_blank" rel="noreferrer" className={inlineAction}>
+						Get test USDC
+					</a>
+				) : (
+					enable("group")
+				)}
+			</UsdcRow>
+			<UsdcRow label="For personal savings" holding={usdc.savings}>
+				{faucetOn ? (
+					<button type="button" onClick={() => getUsdc.mutate(address)} disabled={getUsdc.isPending} className={inlineAction}>
+						{getUsdc.isPending ? FAUCET_STEP_LABEL[getUsdc.step] : usdc.savings.trustline ? "Get test USDC" : "Enable & get test USDC"}
+					</button>
+				) : (
+					!usdc.savings.trustline && enable("savings")
+				)}
+			</UsdcRow>
+		</dl>
+	);
+}
+
+/** "For groups · 40.00 USDC · Get test USDC" / "For groups · can't hold it yet · Enable" */
+function UsdcRow({ label, holding, children }: { label: string; holding: UsdcHolding; children?: React.ReactNode }) {
+	return (
+		<div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+			<dt className="text-ink-muted">{label} ·</dt>
+			<dd className={holding.trustline ? undefined : "text-accent"}>{holding.trustline ? formatMoney(holding.usdc, "USDC") : "can't hold it yet"}</dd>
+			{children && <dd>{children}</dd>}
+		</div>
+	);
 }
 
 /** "Useful Insights" (`WalletSummaryDto.insights`): savings growth, active groups, next payout. */

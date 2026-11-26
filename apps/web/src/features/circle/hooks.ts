@@ -74,8 +74,10 @@ export function useContribute(id: string) {
 	const mutation = useMutation({
 		mutationFn: (cycle: CycleDto) => {
 			if (!cycle.myAmountDue) throw new Error("Nothing is due from you right now.");
-			// Simulated mode (not on Stellar): no payment to make, the API records it directly.
-			if (!cycle.payment) return recordContribution(id);
+			// Simulated mode (not on Stellar: `chainSync` is null): no payment to make, the API records it directly.
+			if (!cycle.payment && !cycle.chainSync) return recordContribution(id);
+			// On Stellar without instructions: the escrow is still being created (right after Start).
+			if (!cycle.payment) throw new Error("The group's escrow is still being set up on Stellar. Try again in a few seconds.");
 			return pay(cycle.payment, (hash) => recordContribution(id, hash));
 		},
 		onSuccess: (cycle) => {

@@ -7,8 +7,18 @@ export const STELLAR_NETWORK_LABEL = "Stellar Testnet";
 export const HORIZON_URL = "https://horizon-testnet.stellar.org";
 /** Networks.TESTNET — what wallets sign against. */
 export const NETWORK_PASSPHRASE = "Test SDF Network ; September 2015";
-/** Saji's own test USDC on Stellar Testnet (the API's faucet issues it; groups and savings use it). */
-export const USDC_ISSUER = "GDICTJYAZKLZPQGH6OHTLHEZJXYGAWDS5JQGC2OBANQ7NMNFCA6CRWJH";
+/**
+ * Two test USDCs live side by side on Testnet (seen on the live API, Nov 2026):
+ * - group contributions and payouts use Circle's (`CycleDto.payment.assetIssuer`);
+ * - personal savings and slot purchases use Saji's own, which the API's faucet issues.
+ * Payments always follow the issuer the API names; these are for showing balances and trustlines.
+ */
+export const GROUP_USDC_ISSUER = "GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5";
+export const SAVINGS_USDC_ISSUER = "GDICTJYAZKLZPQGH6OHTLHEZJXYGAWDS5JQGC2OBANQ7NMNFCA6CRWJH";
+export type UsdcKind = "group" | "savings";
+export const USDC_ISSUERS: Record<UsdcKind, string> = { group: GROUP_USDC_ISSUER, savings: SAVINGS_USDC_ISSUER };
+/** Where to get Circle's test USDC (for group savings). Saji's comes from the API's faucet. */
+export const GROUP_USDC_FAUCET_URL = "https://faucet.circle.com/";
 /** Creates Testnet accounts with test XLM. */
 export const FRIENDBOT_URL = "https://friendbot.stellar.org";
 /** The personal savings contract every plan lives in (one shared contract, a plan id per goal). */
