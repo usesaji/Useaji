@@ -4,10 +4,10 @@ import type { NextConfig } from "next";
 const BASE_PATH = process.env.VERCEL_ENV === "preview" ? "/admin" : "";
 
 /**
- * The Saji API (Railway; Swagger at …/docs), with its `/v1` prefix. Unused when
+ * The Saji API (pay.usesaji.com; Swagger at …/docs), with its `/v1` prefix. Unused when
  * NEXT_PUBLIC_API_SOURCE is `mock`. `/health` sits outside `/v1`, at the API's root.
  */
-const API_ORIGIN = process.env.API_PROXY_TARGET || "https://saji-backend-production-0025.up.railway.app/v1";
+const API_ORIGIN = process.env.API_PROXY_TARGET || "https://pay.usesaji.com/v1";
 const API_ROOT = API_ORIGIN.replace(/\/v1\/?$/, "");
 const API_URL = process.env.NEXT_PUBLIC_API_URL || `${BASE_PATH}/api/v1`;
 

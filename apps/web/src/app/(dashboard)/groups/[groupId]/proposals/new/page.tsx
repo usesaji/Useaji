@@ -13,7 +13,8 @@ import { useMemberNames } from "@/features/groups/use-names";
 import type { ProposalType } from "@/lib/api/dto";
 import { pageRoutes } from "@/lib/routes";
 
-type Action = Exclude<ProposalType, "recovery">;
+/** Recovery starts from the recovery screen; slot transfers from the slot marketplace (the API refuses them here). */
+type Action = Exclude<ProposalType, "recovery" | "slot_transfer">;
 
 const ICONS: Record<Action, React.ComponentType<{ className?: string }>> = {
 	pause: HiPause,
@@ -88,7 +89,7 @@ export default function NewProposalPage() {
 						<section>
 							<p className="text-base md:text-lg">What should the group decide?</p>
 							<div className="mt-3 space-y-3" role="radiogroup" aria-label="Proposal type">
-								{(Object.keys(ACTIONS) as Action[]).map((a) => {
+								{(Object.keys(ICONS) as Action[]).map((a) => {
 									const reason = blocked(a);
 									return (
 										<OptionCard

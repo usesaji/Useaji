@@ -23,6 +23,7 @@ function myActivity({ db, user }: Ctx): ActivityItemDto[] {
 				txUrl: explorerTx(c.txHash),
 				createdAt: c.paidAt,
 				group: group(c.groupId),
+				plan: null,
 			})),
 		...db.payouts
 			.filter((p) => p.userId === user.id)
@@ -35,6 +36,35 @@ function myActivity({ db, user }: Ctx): ActivityItemDto[] {
 				txUrl: explorerTx(p.txHash),
 				createdAt: p.paidAt,
 				group: group(p.groupId),
+				plan: null,
+			})),
+		...db.savingsTransactions
+			.map((t) => ({ t, plan: db.savingsPlans.find((p) => p.id === t.planId) }))
+			.filter(({ plan }) => plan?.userId === user.id)
+			.map(({ t, plan }) => ({
+				kind: t.kind === "deposit" ? ("savings_deposit" as const) : ("savings_withdrawal" as const),
+				id: t.id,
+				amount: t.amount,
+				asset: "USDC",
+				txHash: t.txHash,
+				txUrl: explorerTx(t.txHash),
+				createdAt: t.createdAt,
+				group: null,
+				plan: { id: plan!.id, name: plan!.name },
+			})),
+		// Paid slot transfers: the buyer paid the asking price, the seller received it (free ones make no rows).
+		...db.slotTransfers
+			.filter((t) => num(t.price) > 0 && (t.toId === user.id || t.fromId === user.id))
+			.map((t) => ({
+				kind: t.toId === user.id ? ("slot_purchase" as const) : ("slot_sale" as const),
+				id: `${t.id}-${t.toId === user.id ? "buy" : "sell"}`,
+				amount: t.price,
+				asset: "USDC",
+				txHash: t.txHash,
+				txUrl: explorerTx(t.txHash),
+				createdAt: t.at,
+				group: group(t.groupId),
+				plan: null,
 			})),
 	].sort((a, b) => ms(b.createdAt) - ms(a.createdAt));
 }
@@ -72,7 +102,15 @@ route("GET", "/statements", { message: "Statement generated" }, (ctx) => {
 		fullName: ctx.user.profile ? displayName(ctx.user) : null,
 		email: ctx.user.email,
 		transactions,
-		totals: { contributions: total("contribution"), payouts: total("payout"), withdrawals: total("withdrawal") },
+		totals: {
+			contributions: total("contribution"),
+			payouts: total("payout"),
+			withdrawals: total("withdrawal"),
+			savingsDeposits: total("savings_deposit"),
+			savingsWithdrawals: total("savings_withdrawal"),
+			slotPurchases: total("slot_purchase"),
+			slotSales: total("slot_sale"),
+		},
 		truncated: false,
 	};
 });

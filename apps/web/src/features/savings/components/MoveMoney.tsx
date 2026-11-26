@@ -7,24 +7,25 @@ import { InputField } from "@repo/ui/input-field";
 import { QueryState } from "@repo/ui/query-state";
 import { LinkButton } from "@/components/LinkButton";
 import { PageHeader } from "@/components/PageHeader";
-import { isLockedNow, planTitle } from "@/features/savings/copy";
+import { lockReason, planTitle } from "@/features/savings/copy";
 import { Card, TwoColumns } from "@/components/Cards";
-import { useDeposit, useSavingsPlan, useWithdraw, type MovePhase } from "@/features/savings/hooks";
+import { useDeposit, useSavingsPlan, useWithdraw, type MoveResult } from "@/features/savings/hooks";
+import { TX_PHASE_LABEL } from "@/features/wallet/transactions";
 import { useWalletUsdc } from "@/features/wallet/hooks";
-import type { SavingsPlanDto, SavingsTransactionDto } from "@/lib/api/dto";
+import type { PlanDto } from "@/lib/api/dto";
 import { formatMoney, longDate } from "@/lib/format";
 import { pageRoutes } from "@/lib/routes";
-import { explorerTxUrl, shortAddress, STELLAR_NETWORK_LABEL } from "@/lib/stellar/config";
-import { useNow } from "@/lib/use-now";
+import { shortAddress, STELLAR_NETWORK_LABEL } from "@/lib/stellar/config";
 
 type Mode = "deposit" | "withdraw";
 
-const AMOUNT = /^\d+(\.\d{1,2})?$/;
+/** As the API takes amounts: at most 7 decimals. */
+const AMOUNT = /^\d+(\.\d{1,7})?$/;
 
 const COPY = {
 	deposit: {
 		title: "Deposit USDC",
-		subtitle: "Add simulated USDC from your connected wallet.",
+		subtitle: "Add test USDC from your owner wallet.",
 		walletLabel: "From wallet",
 		walletNote: "Connected",
 		summary: "Deposit summary",
@@ -42,16 +43,11 @@ const COPY = {
 	},
 } as const;
 
-const STATUS: Record<MovePhase, string> = {
-	idle: "Ready when you are",
-	wallet: "Awaiting your signature",
-	submitting: "Submitting to Stellar Testnet…",
-};
-
 /**
  * Deposit (v3 screen 10) and Withdraw (11): an amount, the owner wallet it comes from or goes to, a
- * summary, then the wallet signs. Withdrawals only ever go to the plan's owner wallet; a locked plan
- * refuses them until its release date (the contract and the API enforce it, the screen explains it).
+ * summary, then the wallet signs the transaction the API prepared and the API submits it (a few
+ * seconds: "Confirming on Stellar…"). Withdrawals only ever go to the plan's owner wallet; while the
+ * lock holds they're refused (the contract and the API enforce it, the screen explains it).
  */
 export function MoveMoney({ planId, mode }: { planId: string; mode: Mode }) {
 	const plan = useSavingsPlan(planId);
@@ -70,21 +66,22 @@ export function MoveMoney({ planId, mode }: { planId: string; mode: Mode }) {
 	);
 }
 
-function MoveForm({ plan, mode }: { plan: SavingsPlanDto; mode: Mode }) {
-	const now = useNow();
+function MoveForm({ plan, mode }: { plan: PlanDto; mode: Mode }) {
 	const [amount, setAmount] = useState("");
 	const [touched, setTouched] = useState(false);
-	const [done, setDone] = useState<SavingsTransactionDto | null>(null);
+	const [done, setDone] = useState<MoveResult | null>(null);
 	const deposit = useDeposit(plan);
 	const withdraw = useWithdraw(plan);
 	const move = mode === "deposit" ? deposit : withdraw;
-	const walletUsdc = useWalletUsdc(mode === "deposit" ? plan.ownerWallet : null);
+	const walletUsdc = useWalletUsdc(mode === "deposit" ? plan.ownerAddress : null);
 	const copy = COPY[mode];
 	const back = pageRoutes.dashboardRoutes.SAVINGS_PLAN(plan.id);
+	const owner = plan.ownerAddress ? shortAddress(plan.ownerAddress) : "Simulated wallet";
 
-	const locked = mode === "withdraw" && isLockedNow(plan, now);
+	const locked = mode === "withdraw" && !plan.canWithdraw && Number(plan.balance) > 0;
+	const withdrawable = plan.canWithdraw ? Number(plan.balance) : 0;
 	const value = Number(amount);
-	const available = mode === "deposit" ? (walletUsdc.data ? Number(walletUsdc.data.usdc) : null) : Number(plan.withdrawable);
+	const available = mode === "deposit" ? (walletUsdc.data ? Number(walletUsdc.data.usdc) : null) : withdrawable;
 	const error = !amount.trim()
 		? "Enter an amount"
 		: !AMOUNT.test(amount.trim()) || value <= 0
@@ -100,22 +97,25 @@ function MoveForm({ plan, mode }: { plan: SavingsPlanDto; mode: Mode }) {
 		event.preventDefault();
 		setTouched(true);
 		if (error || locked) return;
-		move.mutate(amount.trim(), { onSuccess: (tx) => setDone(tx) });
+		move.mutate(amount.trim(), { onSuccess: (result) => setDone(result) });
 	};
 
 	if (done) {
+		const m = done.movement;
 		return (
 			<TwoColumns
 				main={
-					<Card title={mode === "deposit" ? "Deposit confirmed" : "Withdrawal sent"}>
-						<p>
-							{formatMoney(done.amount, done.asset)}{" "}
-							{mode === "deposit" ? `added to ${plan.name}` : `sent to ${shortAddress(plan.ownerWallet)}`} on{" "}
-							{longDate(done.createdAt)}.
+					<Card title={mode === "deposit" ? "Deposit confirmed" : "Withdrawal confirmed"}>
+						<p className="animate-pop">
+							{formatMoney(m?.amount ?? amount, plan.asset)} {mode === "deposit" ? `added to ${plan.name}` : `sent to ${owner}`}
+							{m ? ` on ${longDate(m.createdAt)}` : ""}.
 						</p>
-						{done.txHash && (
+						<p>
+							{plan.name} now holds {formatMoney(done.plan.balance, plan.asset)}.
+						</p>
+						{m?.txUrl && (
 							<a
-								href={explorerTxUrl(done.txHash)}
+								href={m.txUrl}
 								target="_blank"
 								rel="noopener noreferrer"
 								className="inline-flex items-center gap-1.5 text-primary"
@@ -144,7 +144,7 @@ function MoveForm({ plan, mode }: { plan: SavingsPlanDto; mode: Mode }) {
 							<p className="mt-2 text-xs font-light text-ink-muted md:text-sm">
 								{mode === "deposit"
 									? `Current savings · ${formatMoney(plan.balance, plan.asset)}`
-									: `Available to withdraw · ${formatMoney(plan.withdrawable, plan.asset)}`}
+									: `Available to withdraw · ${formatMoney(withdrawable, plan.asset)}`}
 							</p>
 						</div>
 						<InputField
@@ -166,7 +166,7 @@ function MoveForm({ plan, mode }: { plan: SavingsPlanDto; mode: Mode }) {
 						<InputField
 							name="wallet"
 							label={copy.walletLabel}
-							value={`${shortAddress(plan.ownerWallet)} · ${copy.walletNote}`}
+							value={`${owner} · ${copy.walletNote}`}
 							readOnly
 						/>
 					</section>
@@ -185,26 +185,28 @@ function MoveForm({ plan, mode }: { plan: SavingsPlanDto; mode: Mode }) {
 						{mode === "deposit" ? (
 							<Card tone="lilac" title="Confirm with your wallet">
 								<p>
-									You stay in control of your keys. Sign only the simulated USDC deposit on {STELLAR_NETWORK_LABEL}. Your balance
-									updates after confirmation.
+									You stay in control of your keys. Your wallet shows the deposit into the Saji savings contract on{" "}
+									{STELLAR_NETWORK_LABEL}; sign only that. Your balance updates after confirmation.
 								</p>
 							</Card>
 						) : locked ? (
 							<Card tone="lilac" title="Withdrawal unavailable">
-								<p>This plan is locked until {longDate(plan.unlocksAt)}. Reaching the target early does not unlock it.</p>
+								<p>{lockReason(plan)}.</p>
+								{plan.lock === "until_date" && <p>Reaching the target early does not unlock it.</p>}
 							</Card>
 						) : (
 							<Card tone="lilac" title="Withdrawal allowed">
 								<p>
-									This plan is {plan.kind === "flexible" ? "flexible" : "released"}. The contract checks your ownership and
-									available balance before releasing funds to your owner wallet.
+									This plan is {plan.lock === "flexible" ? "flexible" : "released"}. The contract checks your ownership and the
+									balance before releasing funds to your owner wallet.
+									{plan.lock === "until_target" ? " Going below your target locks the plan again." : ""}
 								</p>
 							</Card>
 						)}
 						<div className="grid grid-cols-2 gap-3">
 							<Button
 								type="submit"
-								isLoading={move.isPending && move.phase === "submitting"}
+								isLoading={move.isPending && move.phase !== "wallet"}
 								disabled={move.isPending || locked}
 								className="w-full text-sm lg:text-base"
 							>
@@ -214,15 +216,13 @@ function MoveForm({ plan, mode }: { plan: SavingsPlanDto; mode: Mode }) {
 								Cancel
 							</LinkButton>
 						</div>
-						{mode === "deposit" && (
-							<Card title="Transaction status">
-								<p className={move.isPending ? "text-primary" : undefined} aria-live="polite">
-									{STATUS[move.phase]}
-								</p>
-								<p>Next · Submitting → Confirmed</p>
-								<p>If rejected or failed, no deposit is recorded.</p>
-							</Card>
-						)}
+						<Card title="Transaction status">
+							<p className={move.isPending ? "text-primary" : undefined} aria-live="polite">
+								{TX_PHASE_LABEL[move.phase]}
+							</p>
+							<p>Steps · Prepare → Sign in wallet → Confirm on Stellar</p>
+							<p>If you reject it or it fails, nothing moves.</p>
+						</Card>
 					</>
 				}
 			/>

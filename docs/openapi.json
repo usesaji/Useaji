@@ -4768,7 +4768,7 @@
             "name": "kind",
             "required": false,
             "in": "query",
-            "description": "Comma-separated. Any of: group_started, contribution_made, payout_made, group_completed, default_recorded, recovery_started, default_resolved, recovery_resolved, proposal_created, vote_cast, proposal_approved, proposal_rejected, proposal_expired, proposal_executed, group_paused, group_resumed, schedule_updated, member_removed.",
+            "description": "Comma-separated. Any of: group_started, contribution_made, payout_made, group_completed, default_recorded, recovery_started, default_resolved, recovery_resolved, proposal_created, vote_cast, proposal_approved, proposal_rejected, proposal_expired, proposal_executed, group_paused, group_resumed, schedule_updated, member_removed, slot_listed, slot_listing_closed, slot_takeover_requested, slot_transferred.",
             "schema": {
               "example": "payout_made,contribution_made",
               "type": "string",
@@ -4792,7 +4792,11 @@
                   "group_paused",
                   "group_resumed",
                   "schedule_updated",
-                  "member_removed"
+                  "member_removed",
+                  "slot_listed",
+                  "slot_listing_closed",
+                  "slot_takeover_requested",
+                  "slot_transferred"
                 ]
               }
             }
@@ -4940,7 +4944,11 @@
               "enum": [
                 "contribution",
                 "payout",
-                "withdrawal"
+                "withdrawal",
+                "savings_deposit",
+                "savings_withdrawal",
+                "slot_purchase",
+                "slot_sale"
               ]
             }
           },
@@ -5182,6 +5190,1912 @@
         "summary": "Generate my statement of account",
         "tags": [
           "Activity & Statements"
+        ]
+      }
+    },
+    "/v1/groups/{id}/slots/listings": {
+      "post": {
+        "description": "The group must be active, public and not paused; the slot's payout must still be ahead; the seller must have no unresolved missed contribution. One open listing per member per group.",
+        "operationId": "SlotsController_list_v1",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateListingDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Slot listed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data",
+                    "statusCode",
+                    "message"
+                  ],
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/ListingDto"
+                    },
+                    "statusCode": {
+                      "type": "integer",
+                      "example": 201
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Slot listed"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Group not found or you are not a member",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "A listing rule is not met, or the slot is already listed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "List my slot for takeover",
+        "tags": [
+          "Slot marketplace"
+        ]
+      }
+    },
+    "/v1/groups/{id}/slots/eligibility": {
+      "get": {
+        "description": "The checklist for listing in this group, from the same rules `POST .../slots/listings` enforces. Each failed check carries the message the API would answer with.",
+        "operationId": "SlotsController_eligibility_v1",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Eligibility retrieved",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data",
+                    "statusCode",
+                    "message"
+                  ],
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/SellerEligibilityDto"
+                    },
+                    "statusCode": {
+                      "type": "integer",
+                      "example": 200
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Eligibility retrieved"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Group not found or you are not a member",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Can I list my slot?",
+        "tags": [
+          "Slot marketplace"
+        ]
+      }
+    },
+    "/v1/groups/{id}/slots/listings/mine": {
+      "delete": {
+        "description": "Closes the listing and drops its takeover requests. An approved buyer can no longer accept it.",
+        "operationId": "SlotsController_withdraw_v1",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Listing withdrawn",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data",
+                    "statusCode",
+                    "message"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "nullable": true,
+                      "example": null
+                    },
+                    "statusCode": {
+                      "type": "integer",
+                      "example": 200
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Listing withdrawn"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No open listing in this group",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Withdraw my listing",
+        "tags": [
+          "Slot marketplace"
+        ]
+      }
+    },
+    "/v1/groups/{id}/slots/transfers": {
+      "get": {
+        "description": "Members only. Newest first.",
+        "operationId": "SlotsController_history_v1",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Slot transfers retrieved",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data",
+                    "statusCode",
+                    "message"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/SlotTransferDto"
+                      }
+                    },
+                    "statusCode": {
+                      "type": "integer",
+                      "example": 200
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Slot transfers retrieved"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Group not found or you are not a member",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Slot transfer history",
+        "tags": [
+          "Slot marketplace"
+        ]
+      }
+    },
+    "/v1/slots/marketplace": {
+      "get": {
+        "description": "Open listings in active public groups, newest first. Filter with `search` (group name), `minPrice` and `maxPrice` (asking price, inclusive). Each listing has `buyerEligibility` for you.",
+        "operationId": "SlotsController_marketplace_v1",
+        "parameters": [
+          {
+            "name": "page",
+            "required": false,
+            "in": "query",
+            "description": "1-based page number.",
+            "schema": {
+              "minimum": 1,
+              "default": 1,
+              "type": "number"
+            }
+          },
+          {
+            "name": "limit",
+            "required": false,
+            "in": "query",
+            "description": "Items per page, 1 to 100.",
+            "schema": {
+              "minimum": 1,
+              "maximum": 100,
+              "default": 20,
+              "type": "number"
+            }
+          },
+          {
+            "name": "search",
+            "required": false,
+            "in": "query",
+            "description": "Part of the group name, ignoring case.",
+            "schema": {
+              "maxLength": 60,
+              "type": "string"
+            }
+          },
+          {
+            "name": "minPrice",
+            "required": false,
+            "in": "query",
+            "description": "Lowest asking price, inclusive.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "maxPrice",
+            "required": false,
+            "in": "query",
+            "description": "Highest asking price, inclusive.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Listings retrieved",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data",
+                    "statusCode",
+                    "message"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "required": [
+                        "results",
+                        "paginationMeta"
+                      ],
+                      "properties": {
+                        "results": {
+                          "type": "array",
+                          "items": {
+                            "$ref": "#/components/schemas/ListingDto"
+                          }
+                        },
+                        "paginationMeta": {
+                          "type": "object",
+                          "required": [
+                            "nextPage",
+                            "previousPage",
+                            "totalCount",
+                            "count",
+                            "totalPages",
+                            "currentPage"
+                          ],
+                          "properties": {
+                            "nextPage": {
+                              "type": "boolean",
+                              "example": true
+                            },
+                            "previousPage": {
+                              "type": "boolean",
+                              "example": false
+                            },
+                            "totalCount": {
+                              "type": "integer",
+                              "example": 42
+                            },
+                            "count": {
+                              "type": "integer",
+                              "example": 20
+                            },
+                            "totalPages": {
+                              "type": "integer",
+                              "example": 3
+                            },
+                            "currentPage": {
+                              "type": "integer",
+                              "example": 1
+                            }
+                          }
+                        }
+                      }
+                    },
+                    "statusCode": {
+                      "type": "integer",
+                      "example": 200
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Listings retrieved"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Browse the slot marketplace",
+        "tags": [
+          "Slot marketplace"
+        ]
+      }
+    },
+    "/v1/slots/listings/mine": {
+      "get": {
+        "description": "Listings you created (`selling`) and listings you requested, were chosen for, or bought (`buying`), in any status, newest first, up to 100 each.",
+        "operationId": "SlotsController_mine_v1",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Listings retrieved",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data",
+                    "statusCode",
+                    "message"
+                  ],
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/MyListingsDto"
+                    },
+                    "statusCode": {
+                      "type": "integer",
+                      "example": 200
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Listings retrieved"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "My listings and requests",
+        "tags": [
+          "Slot marketplace"
+        ]
+      }
+    },
+    "/v1/slots/listings/{id}": {
+      "get": {
+        "description": "Public groups: anyone. The seller also sees takeover requests; the seller, the chosen buyer and members see the transfer vote and approval.",
+        "operationId": "SlotsController_detail_v1",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Listing retrieved",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data",
+                    "statusCode",
+                    "message"
+                  ],
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/ListingDto"
+                    },
+                    "statusCode": {
+                      "type": "integer",
+                      "example": 200
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Listing retrieved"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Listing not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Get a listing",
+        "tags": [
+          "Slot marketplace"
+        ]
+      }
+    },
+    "/v1/slots/listings/{id}/takeover-requests": {
+      "post": {
+        "description": "The buyer must have a linked wallet, not be a member of (or banned from) the group, hold no slot in it, and have no unresolved missed contribution in any group. Repeating a pending request is a no-op.",
+        "operationId": "SlotsController_request_v1",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Takeover requested",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data",
+                    "statusCode",
+                    "message"
+                  ],
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/ListingDto"
+                    },
+                    "statusCode": {
+                      "type": "integer",
+                      "example": 200
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Takeover requested"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "You are the seller",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "An admin removed you from this group",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Open listing not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "A buyer rule is not met",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Request a takeover",
+        "tags": [
+          "Slot marketplace"
+        ]
+      },
+      "delete": {
+        "operationId": "SlotsController_withdrawRequest_v1",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Takeover request withdrawn",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data",
+                    "statusCode",
+                    "message"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "nullable": true,
+                      "example": null
+                    },
+                    "statusCode": {
+                      "type": "integer",
+                      "example": 200
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Takeover request withdrawn"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Takeover request not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Withdraw my takeover request",
+        "tags": [
+          "Slot marketplace"
+        ]
+      }
+    },
+    "/v1/slots/listings/{id}/takeover-requests/{buyerId}/select": {
+      "post": {
+        "description": "Seller only. Opens a `slot_transfer` proposal; every member except the seller votes, under the group's approval rules. Once it passes, the buyer can accept until the earlier of the execution window and the round deadline.",
+        "operationId": "SlotsController_select_v1",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "buyerId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Transfer proposed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data",
+                    "statusCode",
+                    "message"
+                  ],
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/ListingDto"
+                    },
+                    "statusCode": {
+                      "type": "integer",
+                      "example": 200
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Transfer proposed"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not the seller",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Listing or takeover request not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "A rule is not met, or a transfer of this slot is already being voted on",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Choose a buyer and put the transfer to a vote",
+        "tags": [
+          "Slot marketplace"
+        ]
+      }
+    },
+    "/v1/slots/listings/{id}/accept/prepare": {
+      "post": {
+        "description": "Chosen buyer only, while the approval is unexpired. Re-checks the group, the slot and both parties, then returns a `transfer_slot` call on the slot registry already co-signed by SAJI; the co-signature lasts about two minutes, so sign and send it promptly. Signing it pays the asking price to the seller and moves the slot. Simulated mode: 409, accept directly.",
+        "operationId": "SlotsController_prepareAccept_v1",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Transaction prepared",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data",
+                    "statusCode",
+                    "message"
+                  ],
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/PreparedTransactionDto"
+                    },
+                    "statusCode": {
+                      "type": "integer",
+                      "example": 200
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Transaction prepared"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Stellar refused the call, e.g. not enough USDC in your wallet or no USDC trustline on the seller's",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No approved takeover for you",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Approval expired, or a rule is no longer met",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Stellar or Soroban RPC is slow or unreachable, or the transaction is not on Stellar yet. Retry the same call (with the same txHash).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Prepare the acceptance for my wallet to sign",
+        "tags": [
+          "Slot marketplace"
+        ]
+      }
+    },
+    "/v1/slots/listings/{id}/accept": {
+      "post": {
+        "description": "On Stellar, send the signed transaction (`signedXdr`) or the hash of one you submitted (`txHash`); the API checks the slot registry moved the slot to your wallet, then records the transfer. Past contributions and payouts keep the seller's name. Simulated mode needs no body.",
+        "operationId": "SlotsController_accept_v1",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AcceptTransferDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Slot transferred",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data",
+                    "statusCode",
+                    "message"
+                  ],
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/ListingDto"
+                    },
+                    "statusCode": {
+                      "type": "integer",
+                      "example": 200
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Slot transferred"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The transaction did not accept this transfer",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No approved takeover for you",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Approval expired or a rule is no longer met",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Stellar or Soroban RPC is slow or unreachable, or the transaction is not on Stellar yet. Retry the same call (with the same txHash).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Accept the takeover",
+        "tags": [
+          "Slot marketplace"
+        ]
+      }
+    },
+    "/v1/savings/plans": {
+      "post": {
+        "description": "On Stellar returns `planId` and an unsigned `create_plan` transaction for your linked wallet, which becomes the plan owner; sign it and call `POST /savings/plans/{planId}/confirm`. Simulated mode creates the plan at once (`plan`).",
+        "operationId": "SavingsController_create_v1",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreatePlanDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Savings goal prepared",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data",
+                    "statusCode",
+                    "message"
+                  ],
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/PreparedPlanDto"
+                    },
+                    "statusCode": {
+                      "type": "integer",
+                      "example": 201
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Savings goal prepared"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid name, target, lock or unlock date",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "No linked wallet (Stellar)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Stellar or Soroban RPC is slow or unreachable, or the transaction is not on Stellar yet. Retry the same call (with the same txHash).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Create a savings goal",
+        "tags": [
+          "Personal savings"
+        ]
+      },
+      "get": {
+        "description": "Newest first, with balance and progress. `movements` is null here.",
+        "operationId": "SavingsController_list_v1",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Savings goals retrieved",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data",
+                    "statusCode",
+                    "message"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/PlanDto"
+                      }
+                    },
+                    "statusCode": {
+                      "type": "integer",
+                      "example": 200
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Savings goals retrieved"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "List my savings goals",
+        "tags": [
+          "Personal savings"
+        ]
+      }
+    },
+    "/v1/savings/plans/{id}/confirm": {
+      "post": {
+        "description": "Send the signed `create_plan` transaction or its hash. Repeating it returns the same plan.",
+        "operationId": "SavingsController_confirm_v1",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConfirmDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Savings goal created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data",
+                    "statusCode",
+                    "message"
+                  ],
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/PlanDto"
+                    },
+                    "statusCode": {
+                      "type": "integer",
+                      "example": 200
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Savings goal created"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The transaction did not create this plan for your wallet",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Plan not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Stellar or Soroban RPC is slow or unreachable, or the transaction is not on Stellar yet. Retry the same call (with the same txHash).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Confirm a goal created on Stellar",
+        "tags": [
+          "Personal savings"
+        ]
+      }
+    },
+    "/v1/savings/plans/{id}": {
+      "get": {
+        "description": "With its last 100 deposits and withdrawals, newest first.",
+        "operationId": "SavingsController_detail_v1",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Savings goal retrieved",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data",
+                    "statusCode",
+                    "message"
+                  ],
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/PlanDto"
+                    },
+                    "statusCode": {
+                      "type": "integer",
+                      "example": 200
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Savings goal retrieved"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Plan not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Get a savings goal",
+        "tags": [
+          "Personal savings"
+        ]
+      }
+    },
+    "/v1/savings/plans/{id}/deposits/prepare": {
+      "post": {
+        "description": "Unsigned `deposit` call moving USDC from the owner wallet into the plan.",
+        "operationId": "SavingsController_prepareDeposit_v1",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AmountDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Transaction prepared",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data",
+                    "statusCode",
+                    "message"
+                  ],
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/PreparedTransactionDto"
+                    },
+                    "statusCode": {
+                      "type": "integer",
+                      "example": 200
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Transaction prepared"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Stellar refused the call, e.g. not enough USDC in the wallet",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Plan not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Simulated mode, wrong wallet linked, or not enough USDC in the wallet",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Stellar or Soroban RPC is slow or unreachable, or the transaction is not on Stellar yet. Retry the same call (with the same txHash).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Prepare a deposit",
+        "tags": [
+          "Personal savings"
+        ]
+      }
+    },
+    "/v1/savings/plans/{id}/deposits": {
+      "post": {
+        "description": "On Stellar: call the matching `/prepare` endpoint, sign the returned XDR with the plan owner's wallet, then send `signedXdr` (or `txHash` if you submitted it). The API reads the amount and balance from the contract event. Simulated mode: send `amount`.",
+        "operationId": "SavingsController_deposit_v1",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConfirmDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Deposit recorded",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data",
+                    "statusCode",
+                    "message"
+                  ],
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/PlanDto"
+                    },
+                    "statusCode": {
+                      "type": "integer",
+                      "example": 200
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Deposit recorded"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The transaction did not deposit into this plan",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Plan not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Stellar or Soroban RPC is slow or unreachable, or the transaction is not on Stellar yet. Retry the same call (with the same txHash).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Record a deposit",
+        "tags": [
+          "Personal savings"
+        ]
+      }
+    },
+    "/v1/savings/plans/{id}/withdrawals/prepare": {
+      "post": {
+        "description": "Refused with 409 while the plan is locked (date not reached and/or target not met) or when the amount is above the balance. The contract enforces the same rule.",
+        "operationId": "SavingsController_prepareWithdrawal_v1",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AmountDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Transaction prepared",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data",
+                    "statusCode",
+                    "message"
+                  ],
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/PreparedTransactionDto"
+                    },
+                    "statusCode": {
+                      "type": "integer",
+                      "example": 200
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Transaction prepared"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Stellar refused the call, e.g. not enough USDC in the wallet",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Plan not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Locked, above the balance, simulated mode, or wrong wallet",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Stellar or Soroban RPC is slow or unreachable, or the transaction is not on Stellar yet. Retry the same call (with the same txHash).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Prepare a withdrawal",
+        "tags": [
+          "Personal savings"
+        ]
+      }
+    },
+    "/v1/savings/plans/{id}/withdrawals": {
+      "post": {
+        "description": "On Stellar: call the matching `/prepare` endpoint, sign the returned XDR with the plan owner's wallet, then send `signedXdr` (or `txHash` if you submitted it). The API reads the amount and balance from the contract event. Simulated mode: send `amount`; locked plans are refused with 409.",
+        "operationId": "SavingsController_withdraw_v1",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConfirmDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Withdrawal recorded",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data",
+                    "statusCode",
+                    "message"
+                  ],
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/PlanDto"
+                    },
+                    "statusCode": {
+                      "type": "integer",
+                      "example": 200
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Withdrawal recorded"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The transaction did not withdraw from this plan",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Plan not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Locked or above the balance (simulated mode)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Stellar or Soroban RPC is slow or unreachable, or the transaction is not on Stellar yet. Retry the same call (with the same txHash).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Record a withdrawal",
+        "tags": [
+          "Personal savings"
+        ]
+      }
+    },
+    "/v1/savings/overview": {
+      "get": {
+        "description": "Group savings and personal plans together, for the Savings dashboard screen.",
+        "operationId": "DashboardController_overview_v1",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Savings dashboard retrieved",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data",
+                    "statusCode",
+                    "message"
+                  ],
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/SavingsDashboardDto"
+                    },
+                    "statusCode": {
+                      "type": "integer",
+                      "example": 200
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Savings dashboard retrieved"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Get my savings dashboard",
+        "tags": [
+          "Personal savings"
+        ]
+      }
+    },
+    "/v1/faucet/trustline/prepare": {
+      "post": {
+        "description": "Testnet only. Unsigned `change_trust` for your linked wallet; sign and submit it with your wallet. 404 when the faucet is off.",
+        "operationId": "FaucetController_trustline_v1",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Transaction prepared",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data",
+                    "statusCode",
+                    "message"
+                  ],
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/PreparedTrustlineDto"
+                    },
+                    "statusCode": {
+                      "type": "integer",
+                      "example": 200
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Transaction prepared"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "The faucet is off: not Stellar testnet, or no issuer secret for the configured USDC",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "No linked wallet, wallet not funded on testnet, or already trusted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Stellar is unreachable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Prepare a USDC trustline for my wallet",
+        "tags": [
+          "Testnet faucet"
+        ]
+      }
+    },
+    "/v1/faucet/usdc": {
+      "post": {
+        "description": "Testnet only. Sends 1000 test USDC to your linked wallet, which must already trust USDC. Once an hour per wallet, with a global hourly cap. 404 when the faucet is off.",
+        "operationId": "FaucetController_fund_v1",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Test USDC sent",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data",
+                    "statusCode",
+                    "message"
+                  ],
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/FaucetFundedDto"
+                    },
+                    "statusCode": {
+                      "type": "integer",
+                      "example": 200
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Test USDC sent"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "The faucet is off: not Stellar testnet, or no issuer secret for the configured USDC",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "No linked wallet, wallet not on testnet, no USDC trustline, or trustline limit too low",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "This wallet got USDC in the last hour, the global hourly cap is reached, or too many requests",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Stellar is unreachable or slow to confirm. When the message says to check your wallet, the payment may still land: do not retry at once.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Get test USDC",
+        "tags": [
+          "Testnet faucet"
         ]
       }
     },
@@ -5639,12 +7553,7 @@
     "contact": {}
   },
   "tags": [],
-  "servers": [
-    {
-      "url": "/",
-      "description": "This server"
-    }
-  ],
+  "servers": [],
   "components": {
     "securitySchemes": {
       "bearer": {
@@ -7428,6 +9337,10 @@
           "late": {
             "type": "boolean",
             "description": "Paid after the deadline, within grace."
+          },
+          "coveredByPreviousHolder": {
+            "type": "boolean",
+            "description": "The member took this slot over after its previous holder paid this\nround; `paid`, `amount` and `paidAt` describe that earlier payment."
           }
         },
         "required": [
@@ -7435,7 +9348,8 @@
           "paidAt",
           "member",
           "paid",
-          "late"
+          "late",
+          "coveredByPreviousHolder"
         ]
       },
       "ScheduleSlotDto": {
@@ -7523,7 +9437,7 @@
             }
           },
           "contributions": {
-            "description": "Every member who owes this round, the recipient included.",
+            "description": "One row per slot owed this round, the recipient included (see `coveredByPreviousHolder`).",
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/RoundContributionDto"
@@ -7742,6 +9656,35 @@
           "graceUntil"
         ]
       },
+      "SlotTransferDetailDto": {
+        "type": "object",
+        "properties": {
+          "listingId": {
+            "type": "string"
+          },
+          "seller": {
+            "$ref": "#/components/schemas/MemberPreviewDto"
+          },
+          "position": {
+            "type": "number",
+            "description": "0-based payout round of the slot when listed."
+          },
+          "buyer": {
+            "$ref": "#/components/schemas/MemberPreviewDto"
+          },
+          "price": {
+            "type": "string",
+            "description": "What the buyer pays the seller when accepting."
+          }
+        },
+        "required": [
+          "listingId",
+          "seller",
+          "position",
+          "buyer",
+          "price"
+        ]
+      },
       "ThresholdDto": {
         "type": "object",
         "properties": {
@@ -7769,7 +9712,8 @@
               "pause",
               "resume",
               "update_schedule",
-              "recovery"
+              "recovery",
+              "slot_transfer"
             ],
             "type": "string"
           },
@@ -7833,6 +9777,16 @@
               }
             ]
           },
+          "slotTransfer": {
+            "nullable": true,
+            "description": "Set for `slot_transfer` proposals.",
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/SlotTransferDetailDto"
+              }
+            ]
+          },
           "id": {
             "type": "string"
           },
@@ -7886,6 +9840,7 @@
           "creationTxUrl",
           "scheduleChange",
           "recovery",
+          "slotTransfer",
           "id",
           "number",
           "description",
@@ -7992,7 +9947,11 @@
               "group_paused",
               "group_resumed",
               "schedule_updated",
-              "member_removed"
+              "member_removed",
+              "slot_listed",
+              "slot_listing_closed",
+              "slot_takeover_requested",
+              "slot_transferred"
             ],
             "type": "string"
           },
@@ -8066,13 +10025,27 @@
             "enum": [
               "contribution",
               "payout",
-              "withdrawal"
+              "withdrawal",
+              "savings_deposit",
+              "savings_withdrawal",
+              "slot_purchase",
+              "slot_sale"
             ],
             "type": "string"
           },
           "group": {
             "nullable": true,
-            "description": "Null for withdrawals.",
+            "description": "Set for contributions, payouts and slot purchases/sales.",
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ActivityGroupDto"
+              }
+            ]
+          },
+          "plan": {
+            "nullable": true,
+            "description": "Set for savings deposits and withdrawals.",
             "type": "object",
             "allOf": [
               {
@@ -8107,6 +10080,7 @@
         "required": [
           "kind",
           "group",
+          "plan",
           "txUrl",
           "id",
           "amount",
@@ -8126,12 +10100,32 @@
           },
           "withdrawals": {
             "type": "string"
+          },
+          "savingsDeposits": {
+            "type": "string",
+            "description": "Into personal savings plans."
+          },
+          "savingsWithdrawals": {
+            "type": "string",
+            "description": "Out of personal savings plans."
+          },
+          "slotPurchases": {
+            "type": "string",
+            "description": "Asking prices you paid for slots you took over."
+          },
+          "slotSales": {
+            "type": "string",
+            "description": "Asking prices you received for slots you sold."
           }
         },
         "required": [
           "contributions",
           "payouts",
-          "withdrawals"
+          "withdrawals",
+          "savingsDeposits",
+          "savingsWithdrawals",
+          "slotPurchases",
+          "slotSales"
         ]
       },
       "StatementDto": {
@@ -8187,6 +10181,761 @@
           "truncated"
         ]
       },
+      "TakeoverRequestDto": {
+        "type": "object",
+        "properties": {
+          "buyer": {
+            "$ref": "#/components/schemas/MemberPreviewDto"
+          },
+          "requestedAt": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "buyer",
+          "requestedAt"
+        ]
+      },
+      "ListingApprovalDto": {
+        "type": "object",
+        "properties": {
+          "expiresAt": {
+            "format": "date-time",
+            "type": "string",
+            "description": "The buyer can accept until then."
+          },
+          "acceptable": {
+            "type": "boolean",
+            "description": "The listing is still open and the approval has not expired: the buyer can accept now."
+          }
+        },
+        "required": [
+          "expiresAt",
+          "acceptable"
+        ]
+      },
+      "ListingTransferDto": {
+        "type": "object",
+        "properties": {
+          "proposalStatus": {
+            "type": "string",
+            "enum": [
+              "active",
+              "approved",
+              "rejected",
+              "expired",
+              "executed"
+            ]
+          },
+          "approval": {
+            "nullable": true,
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ListingApprovalDto"
+              }
+            ]
+          },
+          "proposalId": {
+            "type": "string"
+          },
+          "buyer": {
+            "$ref": "#/components/schemas/MemberPreviewDto"
+          }
+        },
+        "required": [
+          "proposalStatus",
+          "approval",
+          "proposalId",
+          "buyer"
+        ]
+      },
+      "EligibilityCheckDto": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string",
+            "description": "Seller: `member`, `groupActive`, `groupPublic`, `notPaused`, `holdsSlot`,\n`payoutAhead`, `noMissedContribution`. Buyer: `notSeller`, `notBanned`,\n`notMember`, `noSlotInGroup`, `walletLinked`, `noMissedContributions`."
+          },
+          "ok": {
+            "type": "boolean"
+          },
+          "message": {
+            "type": "string",
+            "description": "What the API answers when this check fails."
+          }
+        },
+        "required": [
+          "key",
+          "ok",
+          "message"
+        ]
+      },
+      "EligibilityDto": {
+        "type": "object",
+        "properties": {
+          "checks": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/EligibilityCheckDto"
+            }
+          },
+          "eligible": {
+            "type": "boolean",
+            "description": "Every check passes, so the action will not be refused for these rules."
+          }
+        },
+        "required": [
+          "checks",
+          "eligible"
+        ]
+      },
+      "ListingGroupDto": {
+        "type": "object",
+        "properties": {
+          "frequency": {
+            "enum": [
+              "daily",
+              "weekly",
+              "biweekly",
+              "monthly",
+              "custom"
+            ],
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "contributionAmount": {
+            "type": "string",
+            "description": "Per round, in `asset`."
+          },
+          "asset": {
+            "type": "string"
+          },
+          "totalRounds": {
+            "type": "number",
+            "description": "Slots in the schedule, which is also the number of rounds."
+          },
+          "currentRound": {
+            "type": "number",
+            "description": "0-based round now open."
+          },
+          "roundDeadline": {
+            "format": "date-time",
+            "type": "string",
+            "description": "When the current round's contributions are due."
+          }
+        },
+        "required": [
+          "frequency",
+          "id",
+          "name",
+          "contributionAmount",
+          "asset",
+          "totalRounds",
+          "currentRound",
+          "roundDeadline"
+        ]
+      },
+      "ListingDto": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "enum": [
+              "open",
+              "sold",
+              "withdrawn",
+              "invalidated"
+            ],
+            "type": "string"
+          },
+          "requests": {
+            "nullable": true,
+            "description": "Pending requests; only for the seller.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TakeoverRequestDto"
+            }
+          },
+          "transfer": {
+            "nullable": true,
+            "description": "The transfer the seller chose to put to a vote, if any; visible to the seller, the chosen buyer and members.",
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ListingTransferDto"
+              }
+            ]
+          },
+          "buyerEligibility": {
+            "nullable": true,
+            "description": "Whether you could request a takeover now; null for the seller and for closed listings.",
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/EligibilityDto"
+              }
+            ]
+          },
+          "id": {
+            "type": "string"
+          },
+          "group": {
+            "$ref": "#/components/schemas/ListingGroupDto"
+          },
+          "seller": {
+            "$ref": "#/components/schemas/MemberPreviewDto"
+          },
+          "position": {
+            "type": "number",
+            "description": "0-based payout round of the slot."
+          },
+          "askingPrice": {
+            "type": "string"
+          },
+          "roundsToPay": {
+            "type": "number",
+            "description": "Rounds the buyer would still pay for (the current one is skipped when the seller already paid it)."
+          },
+          "remainingObligation": {
+            "type": "string",
+            "description": "`roundsToPay` × contribution."
+          },
+          "expectedPayout": {
+            "type": "string",
+            "description": "Contribution × rounds: the payout when every member pays."
+          },
+          "createdAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "mine": {
+            "type": "boolean",
+            "description": "You are the seller."
+          },
+          "requested": {
+            "type": "boolean",
+            "description": "You have a pending takeover request on it."
+          }
+        },
+        "required": [
+          "status",
+          "requests",
+          "transfer",
+          "buyerEligibility",
+          "id",
+          "group",
+          "seller",
+          "position",
+          "askingPrice",
+          "roundsToPay",
+          "remainingObligation",
+          "expectedPayout",
+          "createdAt",
+          "mine",
+          "requested"
+        ]
+      },
+      "CreateListingDto": {
+        "type": "object",
+        "properties": {
+          "askingPrice": {
+            "type": "string",
+            "description": "What a buyer pays you when the takeover completes. `\"0\"` gives the slot away."
+          }
+        },
+        "required": [
+          "askingPrice"
+        ]
+      },
+      "SellerEligibilityDto": {
+        "type": "object",
+        "properties": {
+          "checks": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/EligibilityCheckDto"
+            }
+          },
+          "position": {
+            "type": "number",
+            "nullable": true,
+            "description": "0-based payout round of your slot; null when you hold none."
+          },
+          "eligible": {
+            "type": "boolean",
+            "description": "Every check passes, so the action will not be refused for these rules."
+          }
+        },
+        "required": [
+          "checks",
+          "position",
+          "eligible"
+        ]
+      },
+      "SlotPayoutDto": {
+        "type": "object",
+        "properties": {
+          "txUrl": {
+            "type": "string",
+            "nullable": true
+          },
+          "round": {
+            "type": "number"
+          },
+          "recipient": {
+            "$ref": "#/components/schemas/MemberPreviewDto"
+          },
+          "amount": {
+            "type": "string"
+          },
+          "paidAt": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "txUrl",
+          "round",
+          "recipient",
+          "amount",
+          "paidAt"
+        ]
+      },
+      "SlotPaidDto": {
+        "type": "object",
+        "properties": {
+          "rounds": {
+            "type": "number"
+          },
+          "amount": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "rounds",
+          "amount"
+        ]
+      },
+      "SlotTransferDto": {
+        "type": "object",
+        "properties": {
+          "txHash": {
+            "type": "string",
+            "nullable": true
+          },
+          "txUrl": {
+            "type": "string",
+            "nullable": true
+          },
+          "payout": {
+            "nullable": true,
+            "description": "The slot's payout, once its round paid out (to whoever held it then).",
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/SlotPayoutDto"
+              }
+            ]
+          },
+          "id": {
+            "type": "string"
+          },
+          "from": {
+            "$ref": "#/components/schemas/MemberPreviewDto"
+          },
+          "to": {
+            "$ref": "#/components/schemas/MemberPreviewDto"
+          },
+          "position": {
+            "type": "number",
+            "description": "0-based payout round of the slot when it moved."
+          },
+          "price": {
+            "type": "string"
+          },
+          "effectiveRound": {
+            "type": "number",
+            "description": "Round open when it moved."
+          },
+          "transferredAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "paidBySeller": {
+            "description": "What the seller had paid into the group before selling.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/SlotPaidDto"
+              }
+            ]
+          }
+        },
+        "required": [
+          "txHash",
+          "txUrl",
+          "payout",
+          "id",
+          "from",
+          "to",
+          "position",
+          "price",
+          "effectiveRound",
+          "transferredAt",
+          "paidBySeller"
+        ]
+      },
+      "MyListingsDto": {
+        "type": "object",
+        "properties": {
+          "selling": {
+            "description": "Listings you created, any status, newest first.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ListingDto"
+            }
+          },
+          "buying": {
+            "description": "Listings you requested, were chosen for, or bought, any status, newest first.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ListingDto"
+            }
+          }
+        },
+        "required": [
+          "selling",
+          "buying"
+        ]
+      },
+      "PreparedTransactionDto": {
+        "type": "object",
+        "properties": {
+          "xdr": {
+            "type": "string",
+            "description": "Unsigned transaction (base64 XDR) for the wallet to sign."
+          }
+        },
+        "required": [
+          "xdr"
+        ]
+      },
+      "AcceptTransferDto": {
+        "type": "object",
+        "properties": {
+          "signedXdr": {
+            "type": "string",
+            "maxLength": 20000
+          },
+          "txHash": {
+            "type": "string",
+            "maxLength": 128
+          }
+        }
+      },
+      "MovementDto": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "enum": [
+              "deposit",
+              "withdrawal"
+            ],
+            "type": "string"
+          },
+          "txHash": {
+            "type": "string",
+            "nullable": true
+          },
+          "txUrl": {
+            "type": "string",
+            "nullable": true
+          },
+          "id": {
+            "type": "string"
+          },
+          "amount": {
+            "type": "string"
+          },
+          "balanceAfter": {
+            "type": "string"
+          },
+          "createdAt": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "txHash",
+          "txUrl",
+          "id",
+          "amount",
+          "balanceAfter",
+          "createdAt"
+        ]
+      },
+      "PlanDto": {
+        "type": "object",
+        "properties": {
+          "lock": {
+            "enum": [
+              "flexible",
+              "until_date",
+              "until_target",
+              "until_date_or_target"
+            ],
+            "type": "string"
+          },
+          "unlockAt": {
+            "format": "date-time",
+            "type": "string",
+            "nullable": true
+          },
+          "ownerAddress": {
+            "type": "string",
+            "nullable": true,
+            "description": "Wallet that owns the plan on Stellar and must sign its movements; null in simulated mode."
+          },
+          "txHash": {
+            "type": "string",
+            "nullable": true
+          },
+          "txUrl": {
+            "type": "string",
+            "nullable": true
+          },
+          "movements": {
+            "nullable": true,
+            "description": "Newest first; only on the detail endpoint.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MovementDto"
+            }
+          },
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "target": {
+            "type": "string"
+          },
+          "asset": {
+            "type": "string"
+          },
+          "balance": {
+            "type": "string"
+          },
+          "progressPercent": {
+            "type": "number",
+            "description": "Balance as a share of the target, 0 to 100 (capped), two decimals."
+          },
+          "canWithdraw": {
+            "type": "boolean",
+            "description": "The lock allows a withdrawal now (and the balance is above 0)."
+          },
+          "createdAt": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "lock",
+          "unlockAt",
+          "ownerAddress",
+          "txHash",
+          "txUrl",
+          "movements",
+          "id",
+          "name",
+          "target",
+          "asset",
+          "balance",
+          "progressPercent",
+          "canWithdraw",
+          "createdAt"
+        ]
+      },
+      "PreparedPlanDto": {
+        "type": "object",
+        "properties": {
+          "xdr": {
+            "type": "string",
+            "nullable": true,
+            "description": "Sign this, then call `POST /savings/plans/{planId}/confirm`. Null in simulated mode."
+          },
+          "plan": {
+            "nullable": true,
+            "description": "Simulated mode: the plan, already created.",
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/PlanDto"
+              }
+            ]
+          },
+          "planId": {
+            "type": "string",
+            "description": "Id of the plan the transaction creates."
+          }
+        },
+        "required": [
+          "xdr",
+          "plan",
+          "planId"
+        ]
+      },
+      "CreatePlanDto": {
+        "type": "object",
+        "properties": {
+          "lock": {
+            "description": "`flexible`: withdraw any time. `until_date`: from `unlockAt`.\n`until_target`: while the balance is at least the target.\n`until_date_or_target`: whichever comes first.",
+            "enum": [
+              "flexible",
+              "until_date",
+              "until_target",
+              "until_date_or_target"
+            ],
+            "type": "string"
+          },
+          "name": {
+            "type": "string",
+            "minLength": 2,
+            "maxLength": 60
+          },
+          "target": {
+            "type": "string",
+            "description": "Goal amount in USDC."
+          },
+          "unlockAt": {
+            "type": "string",
+            "description": "Required for the date locks, otherwise rejected. In the future, at most 10 years ahead.",
+            "pattern": "(Z|[+-]\\d{2}:\\d{2})$"
+          }
+        },
+        "required": [
+          "lock",
+          "name",
+          "target"
+        ]
+      },
+      "ConfirmDto": {
+        "type": "object",
+        "properties": {
+          "signedXdr": {
+            "type": "string",
+            "maxLength": 20000
+          },
+          "txHash": {
+            "type": "string",
+            "maxLength": 128
+          },
+          "amount": {
+            "type": "string"
+          }
+        }
+      },
+      "AmountDto": {
+        "type": "object",
+        "properties": {
+          "amount": {
+            "type": "string",
+            "description": "USDC, at most 7 decimals."
+          }
+        },
+        "required": [
+          "amount"
+        ]
+      },
+      "SavingsTotalsDto": {
+        "type": "object",
+        "properties": {
+          "asset": {
+            "type": "string"
+          },
+          "plans": {
+            "type": "number"
+          },
+          "balance": {
+            "type": "string",
+            "description": "Sum of all plan balances."
+          },
+          "target": {
+            "type": "string",
+            "description": "Sum of all plan targets."
+          }
+        },
+        "required": [
+          "asset",
+          "plans",
+          "balance",
+          "target"
+        ]
+      },
+      "SavingsDashboardDto": {
+        "type": "object",
+        "properties": {
+          "groups": {
+            "description": "Group savings: the same figures as `GET /groups/overview`.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/GroupsOverviewDto"
+              }
+            ]
+          },
+          "personal": {
+            "description": "Personal savings plans.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/SavingsTotalsDto"
+              }
+            ]
+          },
+          "totalSaved": {
+            "type": "string",
+            "description": "Group `totalSaved` (contributed to groups not yet completed, before\npayouts) plus personal `balance` (held in plans now)."
+          }
+        },
+        "required": [
+          "groups",
+          "personal",
+          "totalSaved"
+        ]
+      },
+      "PreparedTrustlineDto": {
+        "type": "object",
+        "properties": {
+          "xdr": {
+            "type": "string",
+            "description": "Unsigned transaction (base64 XDR) for the wallet to sign and submit."
+          }
+        },
+        "required": [
+          "xdr"
+        ]
+      },
+      "FaucetFundedDto": {
+        "type": "object",
+        "properties": {
+          "txHash": {
+            "type": "string"
+          },
+          "amount": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "txHash",
+          "amount"
+        ]
+      },
       "NotificationDto": {
         "type": "object",
         "properties": {
@@ -8204,7 +10953,10 @@
               "contribution_missed",
               "recovery_started",
               "recovery_resolved",
-              "payout_received"
+              "payout_received",
+              "slot_takeover_requested",
+              "slot_transfer_approved",
+              "slot_transferred"
             ],
             "type": "string"
           },

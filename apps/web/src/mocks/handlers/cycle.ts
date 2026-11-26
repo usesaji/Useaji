@@ -179,6 +179,10 @@ const CATEGORY: Record<GroupEventKind, "governance" | "recovery" | "savings"> = 
 	group_paused: "governance",
 	group_resumed: "governance",
 	schedule_updated: "governance",
+	slot_listed: "savings",
+	slot_listing_closed: "savings",
+	slot_takeover_requested: "savings",
+	slot_transferred: "savings",
 };
 
 route("GET", "/groups/:id/history", { message: "History retrieved" }, (ctx) => {

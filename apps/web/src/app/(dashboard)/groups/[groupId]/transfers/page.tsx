@@ -1,136 +1,112 @@
 "use client";
 
-import Link from "next/link";
 import { useParams } from "next/navigation";
-import { Button } from "@repo/ui/button";
+import { HiArrowTopRightOnSquare } from "react-icons/hi2";
 import { QueryState } from "@repo/ui/query-state";
 import { Card, TwoColumns } from "@/components/Cards";
+import { LinkButton } from "@/components/LinkButton";
 import { PageHeader } from "@/components/PageHeader";
 import { useAccount } from "@/features/auth/hooks";
-import { contributions, firstOf, personName } from "@/features/slots/copy";
-import { Handover, TakeoverPill } from "@/features/slots/components/SlotUi";
+import { useGroup } from "@/features/groups/hooks";
+import { contributions, personName, priceLabel, slotLabel } from "@/features/slots/copy";
 import { useSlotTransfers } from "@/features/slots/hooks";
-import type { SlotTakeoverDto } from "@/lib/api/dto";
-import { formatMoney, longDate, shortDate } from "@/lib/format";
+import type { SlotTransferDto } from "@/lib/api/dto";
+import { formatMoney, longDate } from "@/lib/format";
 import { pageRoutes } from "@/lib/routes";
-import { explorerTxUrl, shortAddress, STELLAR_NETWORK_LABEL } from "@/lib/stellar/config";
+import { explorerContractUrl, shortAddress, SLOT_REGISTRY_CONTRACT, STELLAR_NETWORK_LABEL } from "@/lib/stellar/config";
 
 /**
- * Slot transfer history (v3 screen 07): the permanent record of ownership changes in a group. Each
- * completed transfer shows who to whom, the ownership record, the slot's preserved history and the
- * Soroban receipt; open and closed requests are listed below.
+ * Slot transfer history (v3 screen 07), members only: each completed transfer — who to whom, the
+ * price, the round it moved in, what the seller had paid in (`paidBySeller`), the slot's payout
+ * once its round paid out, and the transaction on Stellar.
  */
 export default function SlotTransfersPage() {
 	const { groupId } = useParams<{ groupId: string }>();
 	const r = pageRoutes.dashboardRoutes;
 	const transfers = useSlotTransfers(groupId);
+	const group = useGroup(groupId);
 	const { data: account } = useAccount();
 	const me = account?.id ?? null;
-	const all = transfers.data?.results ?? [];
-	const done = all.filter((t) => t.status === "transferred");
-	const others = all.filter((t) => t.status !== "transferred");
+	const asset = group.data?.asset ?? "USDC";
+	const all = transfers.data ?? [];
 
 	return (
 		<div className="w-full space-y-8 pb-10">
-			<PageHeader
-				title="Slot transfer history"
-				subtitle="A permanent record of ownership changes."
-				back
-				backHref={r.CIRCLE(groupId)}
-			/>
+			<PageHeader title="Slot transfer history" subtitle="A permanent record of ownership changes." back backHref={r.CIRCLE(groupId)} />
 			<QueryState isLoading={transfers.isLoading} error={transfers.error} onRetry={() => void transfers.refetch()} />
-			{transfers.data && all.length === 0 && (
-				<Card>
-					<p>No slot in this group has changed hands.</p>
-				</Card>
-			)}
-			{done.map((t) => (
-				<CompletedTransfer key={t.id} takeover={t} me={me} />
-			))}
-			{others.length > 0 && (
-				<section className="space-y-3">
-					<h3 className="text-base md:text-lg">Requests</h3>
-					{others.map((t) => (
-						<Link
-							key={t.id}
-							href={r.TAKEOVER(groupId, t.id)}
-							className="block rounded-[20px] bg-panel p-5 transition hover:bg-neutral-comment"
-						>
-							<div className="flex items-start justify-between gap-3">
-								<p className="min-w-0 text-sm md:text-base">
-									Slot #{t.slotNumber} · <Handover takeover={t} me={me} />
-								</p>
-								<TakeoverPill status={t.status} />
-							</div>
-							<p className="mt-2 text-xs font-light text-ink-muted md:text-sm">
-								Requested {longDate(t.requestedAt)} · {t.yes} of {t.required} approvals
-							</p>
-						</Link>
-					))}
-				</section>
+			{transfers.data && (
+				<TwoColumns
+					main={
+						<>
+							{all.length === 0 && (
+								<Card>
+									<p>No slot has changed hands in this group yet.</p>
+								</Card>
+							)}
+							{all.map((t, i) => (
+								<TransferRecord key={t.id} transfer={t} me={me} asset={asset} index={i} />
+							))}
+						</>
+					}
+					side={
+						<>
+							<Card tone="lilac" title="History stays with whoever paid">
+								<p>Contributions and payouts keep the name of the member who made or received them. A transfer moves only the position.</p>
+								<p>If the seller had already paid the open round, the buyer starts paying from the next one.</p>
+							</Card>
+							<Card title="On Stellar">
+								<p>Network · {STELLAR_NETWORK_LABEL}</p>
+								<p>Slot registry · {shortAddress(SLOT_REGISTRY_CONTRACT)}</p>
+								<a href={explorerContractUrl(SLOT_REGISTRY_CONTRACT)} target="_blank" rel="noopener noreferrer" className="inline-block text-primary">
+									View the registry on the explorer
+								</a>
+							</Card>
+							<LinkButton href={r.MARKETPLACE} variant="soft" className="w-full text-sm lg:text-base">
+								Slot marketplace
+							</LinkButton>
+						</>
+					}
+				/>
 			)}
 		</div>
 	);
 }
 
-function CompletedTransfer({ takeover: t, me }: { takeover: SlotTakeoverDto; me: string | null }) {
-	const asset = t.group.asset;
+function TransferRecord({ transfer: t, me, asset, index }: { transfer: SlotTransferDto; me: string | null; asset: string; index: number }) {
 	return (
-		<TwoColumns
-			main={
-				<>
-					<Card title="Transfer completed">
-						<p>
-							{t.group.name} · Slot #{t.slotNumber} of {t.group.totalRounds}
-						</p>
-						<p>
-							{personName(t.from, me)} → {personName(t.to, me)}
-						</p>
-						<p>
-							{longDate(t.transferredAt)} · {t.yes} of {t.eligible} members approved
-						</p>
-					</Card>
-					<Card title="Preserved slot history">
-						{t.history.length === 0 ? (
-							<p>No contributions recorded yet.</p>
-						) : (
-							t.history.map((h, i) => (
-								<p key={`${h.kind}-${h.at}-${i}`}>
-									{shortDate(h.at)} ·{" "}
-									{h.kind === "contribution"
-										? `${formatMoney(h.amount, asset)} contributed by ${firstOf(h.member, me)}`
-										: h.scheduled
-											? `Payout of ${formatMoney(h.amount, asset)} scheduled`
-											: `Payout of ${formatMoney(h.amount, asset)} to ${firstOf(h.member, me)}`}
-								</p>
-							))
-						)}
-					</Card>
-				</>
-			}
-			side={
-				<>
-					<Card title="Ownership record">
-						<p>Current owner · {personName(t.to, me)}</p>
-						<p>Previous owner · {personName(t.from, me)}</p>
-						<p>
-							Remaining · {contributions(t.terms.remainingContributions)} / {formatMoney(t.terms.remainingAmount, asset)}
-						</p>
-					</Card>
-					<Card tone="lilac" title="Transaction receipt">
-						<p>Network · {STELLAR_NETWORK_LABEL}</p>
-						<p>Soroban slot transfer · Confirmed</p>
-						<p>Transaction · {t.txHash ? shortAddress(t.txHash) : "Simulated"}</p>
-					</Card>
-					{t.txHash && (
-						<Button asChild variant="soft" className="w-full text-sm lg:text-base">
-							<a href={explorerTxUrl(t.txHash)} target="_blank" rel="noopener noreferrer">
-								View transaction on explorer
-							</a>
-						</Button>
-					)}
-				</>
-			}
-		/>
+		<section className="animate-rise space-y-4 rounded-[20px] bg-panel p-5" style={{ "--i": index } as React.CSSProperties}>
+			<div className="flex items-start justify-between gap-3">
+				<h3 className="text-base md:text-lg">
+					{personName(t.from, me)} → {personName(t.to, me)}
+				</h3>
+				<span className="shrink-0 text-xs font-light text-ink-muted md:text-sm">{longDate(t.transferredAt)}</span>
+			</div>
+			<div className="space-y-2 text-xs font-light text-ink-muted md:text-sm">
+				<p>
+					{slotLabel(t.position)} · moved in round {t.effectiveRound + 1} · {priceLabel(t.price, asset)}
+				</p>
+				<p>
+					Paid in by {personName(t.from, me)} before the transfer · {contributions(t.paidBySeller.rounds)} ·{" "}
+					{formatMoney(t.paidBySeller.amount, asset)}
+				</p>
+				<p>
+					{t.payout
+						? `Payout · ${formatMoney(t.payout.amount, asset)} to ${personName(t.payout.recipient, me)} on ${longDate(t.payout.paidAt)}`
+						: `Payout · still ahead, in round ${t.position + 1}`}
+				</p>
+			</div>
+			<div className="flex flex-wrap gap-x-4 gap-y-2 text-xs md:text-sm">
+				{t.txUrl && (
+					<a href={t.txUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 text-primary">
+						Transfer on Stellar <HiArrowTopRightOnSquare />
+					</a>
+				)}
+				{t.payout?.txUrl && (
+					<a href={t.payout.txUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 text-primary">
+						Payout on Stellar <HiArrowTopRightOnSquare />
+					</a>
+				)}
+			</div>
+		</section>
 	);
 }

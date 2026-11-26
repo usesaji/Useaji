@@ -1,44 +1,61 @@
 /**
- * Slot marketplace & takeover (v3). PROVISIONAL: the API doesn't have these routes yet; the mock
- * serves them (src/mocks/handlers/slots.ts) with the shapes in lib/api/dto.ts.
+ * The slot marketplace (`/v1/slots/*`, `/v1/groups/{id}/slots/*`, v3; docs/frontend-integration.md §6).
+ * Seller: list (with an asking price), see requests, put one buyer to the group's vote (a
+ * `slot_transfer` proposal, voted on with the governance routes), withdraw. Buyer: browse, request,
+ * then accept once approved: prepare → the wallet signs (co-signed by Saji for ~2 minutes) → accept.
  */
 import { apiDelete, apiGet, apiPost, type Page } from "@/lib/api/client";
-import type { CreateSlotListingDto, MySlotDto, SlotListingDto, SlotTakeoverDto } from "@/lib/api/dto";
+import type {
+	AcceptTransferDto,
+	CreateListingDto,
+	ListingDto,
+	MyListingsDto,
+	PreparedTransactionDto,
+	SellerEligibilityDto,
+	SlotTransferDto,
+} from "@/lib/api/dto";
 
-/** The marketplace (open and pending listings); `mine`: the caller's own listings, any status. */
-export const listSlotListings = (query: { mine?: boolean; page?: number; limit?: number } = {}) =>
-	apiGet<Page<SlotListingDto>>("/slots/listings", query);
+export interface MarketplaceQuery {
+	page?: number;
+	limit?: number;
+	/** Part of the group name, ignoring case (at most 60 characters). */
+	search?: string;
+	/** Asking price bounds, inclusive, as decimal strings. */
+	minPrice?: string;
+	maxPrice?: string;
+}
 
-export const getSlotListing = (id: string) => apiGet<SlotListingDto>(`/slots/listings/${id}`);
+/** Open listings in active public groups, newest first; filtered on the server across all pages. */
+export const listMarketplace = (query: MarketplaceQuery = {}) => apiGet<Page<ListingDto>>("/slots/marketplace", query);
 
-/** The seller withdraws an open listing (not while a request is under review). */
-export const cancelSlotListing = (id: string) => apiDelete<SlotListingDto>(`/slots/listings/${id}`);
+/** Listings you sell and ones you asked for, were chosen for or bought: any status, newest first. */
+export const getMyListings = () => apiGet<MyListingsDto>("/slots/listings/mine");
 
-/** The caller's own slot in a running group, and whether they may list it. 404: no slot left to collect. */
-export const getMySlot = (groupId: string) => apiGet<MySlotDto>(`/groups/${groupId}/slot`);
+/** Anyone can see listings in public groups; `requests` only for the seller. */
+export const getListing = (id: string) => apiGet<ListingDto>(`/slots/listings/${id}`);
 
-export const createSlotListing = (groupId: string, input: CreateSlotListingDto) =>
-	apiPost<SlotListingDto>(`/groups/${groupId}/slot/listings`, input);
+/** Whether you can list your slot now, each rule with what the API would answer. Non-members: 404. */
+export const getSellerEligibility = (groupId: string) => apiGet<SellerEligibilityDto>(`/groups/${groupId}/slots/eligibility`);
 
-/** Needs a linked wallet and no slot in the group yet. Opens the group's approval vote. */
-export const requestTakeover = (listingId: string) => apiPost<SlotTakeoverDto>(`/slots/listings/${listingId}/takeovers`);
+/** `"0"` gives the slot away. 409 with the rule that fails. */
+export const createListing = (groupId: string, input: CreateListingDto) => apiPost<ListingDto>(`/groups/${groupId}/slots/listings`, input);
 
-/** `mine`: requests the caller made. */
-export const listTakeovers = (query: { mine?: boolean; page?: number; limit?: number } = {}) =>
-	apiGet<Page<SlotTakeoverDto>>("/slots/takeovers", query);
+/** Withdraws your open listing in the group (404 if none). */
+export const withdrawListing = (groupId: string) => apiDelete(`/groups/${groupId}/slots/listings/mine`);
 
-export const getTakeover = (id: string) => apiGet<SlotTakeoverDto>(`/slots/takeovers/${id}`);
+/** Repeating it is a no-op. */
+export const requestTakeover = (id: string) => apiPost<ListingDto>(`/slots/listings/${id}/takeover-requests`);
 
-/** A reviewing member's vote. Final. */
-export const voteOnTakeover = (id: string, choice: "yes" | "no") =>
-	apiPost<SlotTakeoverDto>(`/slots/takeovers/${id}/votes`, { choice });
+export const withdrawTakeoverRequest = (id: string) => apiDelete(`/slots/listings/${id}/takeover-requests`);
 
-/** The incoming member's wallet signature on the Soroban transfer; ownership moves. */
-export const signTakeover = (id: string, signature: string) =>
-	apiPost<SlotTakeoverDto>(`/slots/takeovers/${id}/sign`, { signature });
+/** The seller puts one requester to the group's vote: opens the `slot_transfer` proposal. */
+export const selectBuyer = (id: string, buyerId: string) => apiPost<ListingDto>(`/slots/listings/${id}/takeover-requests/${buyerId}/select`);
 
-export const withdrawTakeover = (id: string) => apiDelete<SlotTakeoverDto>(`/slots/takeovers/${id}`);
+/** The approved buyer's transaction, already co-signed by Saji: sign it within ~2 minutes. */
+export const prepareAccept = (id: string) => apiPost<PreparedTransactionDto>(`/slots/listings/${id}/accept/prepare`);
 
-/** Every takeover in a group, newest first: open requests and completed transfers. */
-export const listSlotTransfers = (groupId: string, query: { page?: number; limit?: number } = {}) =>
-	apiGet<Page<SlotTakeoverDto>>(`/groups/${groupId}/slot-transfers`, query);
+/** `{ signedXdr }` (or `{ txHash }` on a retry); `{}` in simulated mode. Returns the listing, `status: "sold"`. */
+export const acceptListing = (id: string, input: AcceptTransferDto) => apiPost<ListingDto>(`/slots/listings/${id}/accept`, input);
+
+/** Members only, newest first. */
+export const listSlotTransfers = (groupId: string) => apiGet<SlotTransferDto[]>(`/groups/${groupId}/slots/transfers`);

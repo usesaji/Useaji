@@ -201,78 +201,127 @@ async function main() {
 	await activity.markAllRead();
 	ok(unread.unread > 0 && (await activity.unreadCount()).unread === 0, `notifications: ${unread.unread} unread, then mark all read`);
 
-	// ---- slot marketplace & takeover (v3, provisional routes)
+	// ---- slot marketplace (v3: list → request → the seller picks → the group votes → the buyer accepts)
 	const slots = await import("@/features/slots/api");
-	const market = await slots.listSlotListings();
+	const market = await slots.listMarketplace();
 	const summerListing = market.results.find((l) => l.group.name === "Summer Fund")!;
 	const circleListing = market.results.find((l) => l.group.name === "Community Circle")!;
-	ok(summerListing?.status === "pending" && summerListing.slotNumber === 5, "marketplace: Summer Fund slot #5, a request under review");
-	ok(circleListing?.status === "open" && circleListing.slotNumber === 7 && circleListing.eligibility?.canRequest === true, "marketplace: Community Circle slot #7, open to Ada");
-	ok(circleListing.terms.remainingContributions > 0 && circleListing.terms.schedule.some((d) => d.payout), "a listing shows its remaining schedule and payout round");
-
-	// Ada reviews Dean's request for Amara's slot (she's one of the 5 reviewers; 4 approvals needed).
-	let review = summerListing.takeover!;
-	ok(review.canVote && review.yes === 3 && review.required === 4 && review.eligible === 5, `Summer Fund takeover: ${review.yes} of ${review.required}, Ada decides`);
-	ok(review.checks.every((c) => c.ok), "the incoming member is verified");
-	review = await slots.voteOnTakeover(review.id, "yes");
-	ok(review.status === "approved" && !review.canVote, "Ada's approval reaches the threshold");
-	await expectError(slots.voteOnTakeover(review.id, "no"), 409, "votes are final");
-	setClockOffset(clockOffset() + 2 * 60_000);
-	review = await slots.getTakeover(review.id);
-	ok(review.status === "transferred" && !!review.txHash, "Dean signs: the slot is transferred on Soroban");
-	const summer = (await groups.listGroups({ limit: 50 })).results.find((g) => g.name === "Summer Fund")!;
-	const summerCycle = await circle.getCycle(summer.id);
-	ok(summerCycle.schedule[4]?.member.userId === review.to.userId, "the schedule's slot #5 now belongs to Dean");
-	const transfers = await slots.listSlotTransfers(summer.id);
-	const dami = transfers.results.find((t) => t.status === "transferred" && t.from.firstName === "Dami")!;
 	ok(
-		transfers.results.filter((t) => t.status === "transferred").length === 2 && dami.history.some((h) => h.kind === "contribution" && h.member.firstName === "Dami"),
-		"transfer history keeps the slot's earlier contributions (Dami → Fatima)",
+		summerListing?.position === 4 && summerListing.askingPrice === "50.00" && summerListing.transfer?.proposalStatus === "active",
+		"marketplace: Summer Fund slot 5 for 50 USDC, its buyer is being voted on",
 	);
+	ok(
+		circleListing?.position === 6 && circleListing.askingPrice === "20.00" && circleListing.buyerEligibility?.eligible === true && !circleListing.transfer,
+		"marketplace: Community Circle slot 7 for 20 USDC, open to Ada",
+	);
+	ok(
+		circleListing.roundsToPay > 0 && Number(circleListing.remainingObligation) === circleListing.roundsToPay * 100 && circleListing.requests === null,
+		`a listing shows what's left to pay (${circleListing.roundsToPay} rounds); requests are the seller's only`,
+	);
+	ok((await slots.listMarketplace({ search: "summer" })).results.every((l) => l.group.name === "Summer Fund"), "search matches part of the group name");
+	ok((await slots.listMarketplace({ maxPrice: "30" })).results.every((l) => Number(l.askingPrice) <= 30), "the price filter runs on the server");
+	await expectError(slots.listMarketplace({ minPrice: "50", maxPrice: "10" }), 400, "minPrice above maxPrice");
 
-	// Ada requests Dami's slot in Community Circle, the members approve, Ada signs.
-	await expectError(slots.requestTakeover(summerListing.id), 409, "a slot under transfer can't be requested");
-	let request = await slots.requestTakeover(circleListing.id);
-	ok(request.status === "voting" && request.canWithdraw && !request.canVote, `Ada's request: ${request.required} of ${request.eligible} approvals needed`);
-	await expectError(slots.requestTakeover(circleListing.id), 409, "one request at a time per slot");
-	await expectError(slots.signTakeover(request.id, "x".repeat(40)), 409, "can't sign before approval");
+	// Ada votes on Dean taking Amara's slot (she's one of 5 voters; 4 approvals needed).
+	const summer = (await groups.listGroups({ limit: 50 })).results.find((g) => g.name === "Summer Fund")!;
+	let transferVote = await gov.getProposal(summer.id, summerListing.transfer!.proposalId);
+	ok(
+		transferVote.type === "slot_transfer" &&
+			transferVote.canVote &&
+			transferVote.slotTransfer?.position === 4 &&
+			transferVote.slotTransfer.seller.firstName === "Amara" &&
+			transferVote.slotTransfer.buyer.firstName === "Dean" &&
+			transferVote.slotTransfer.price === "50.00",
+		"the vote is a slot_transfer proposal: slot 5, Amara → Dean, 50 USDC",
+	);
+	ok(transferVote.yes === 3 && transferVote.required === 4 && transferVote.eligible === 5, `${transferVote.yes} of ${transferVote.required}: Ada decides`);
+	await gov.vote(summer.id, transferVote.id, "yes");
+	transferVote = await gov.getProposal(summer.id, transferVote.id);
+	ok(transferVote.status === "executed", "Ada's vote passes it and the approval is created");
+	await expectError(gov.vote(summer.id, transferVote.id, "no"), 409, "votes are final");
+	await expectError(gov.createProposal(summer.id, { type: "slot_transfer" as never, description: "Sell slot 2 to me" }), 400, "slot transfers can't be proposed directly");
+	setClockOffset(clockOffset() + 2 * 60_000);
+	ok((await slots.getListing(summerListing.id)).status === "sold", "Dean accepts: the slot is sold");
+	const summerCycle = await circle.getCycle(summer.id);
+	ok(summerCycle.schedule[4]?.member.firstName === "Dean", "the schedule's slot 5 now belongs to Dean");
+	const transfers = await slots.listSlotTransfers(summer.id);
+	const fromDami = transfers.find((t) => t.from.firstName === "Dami");
+	ok(
+		transfers.length === 2 && transfers[0]!.from.firstName === "Amara" && transfers[0]!.price === "50.00" && !!transfers[0]!.txUrl,
+		"transfer history: Amara → Dean for 50 USDC, newest first, with its transaction",
+	);
+	ok(!!fromDami && fromDami.price === "0.00" && fromDami.paidBySeller.rounds > 0, `the earlier free Dami → Fatima, with the ${fromDami?.paidBySeller.rounds} rounds Dami paid in`);
+
+	// Ada asks for Dami's slot in Community Circle; Dami picks her, the members approve, Ada accepts.
+	const owner = me.wallet!.publicKey;
+	const walletBefore = Number((await mockWallet.usdcBalance(owner)).usdc);
+	let asked = await slots.requestTakeover(circleListing.id);
+	ok(asked.requested && asked.buyerEligibility?.checks.find((c) => c.key === "notRequested")?.ok === false, "Ada asks for slot 7");
+	ok((await slots.requestTakeover(circleListing.id)).requested, "asking again is a no-op");
+	ok((await slots.getMyListings()).buying.some((l) => l.id === circleListing.id), "it's under My listings & requests");
+	await expectError(slots.prepareAccept(circleListing.id), 404, "nothing to accept before the group approves");
 	setClockOffset(clockOffset() + 10 * 60_000);
-	request = await slots.getTakeover(request.id);
-	ok(request.status === "approved" && request.canSign, `the members approve (${request.yes} yes, ${request.no} no)`);
-	await expectError(slots.signTakeover(request.id, ""), 400, "the transfer needs the wallet's signature");
-	request = await slots.signTakeover(request.id, "x".repeat(40));
-	ok(request.status === "transferred", "Ada signs and the slot is hers");
-	const community = request.group.id;
-	const mySlot = await slots.getMySlot(community);
-	ok(mySlot.slotNumber === 7 && mySlot.canList === true, "Ada now holds slot #7 in Community Circle");
+	asked = await slots.getListing(circleListing.id);
+	ok(
+		asked.transfer?.buyer.userId === me.id && asked.transfer.proposalStatus === "executed" && asked.transfer.approval?.acceptable === true,
+		"Dami puts Ada to the vote and the members approve",
+	);
+	const stale = await slots.prepareAccept(circleListing.id);
+	const staleSigned = await mockWallet.signTransaction(stale.xdr, owner);
+	setClockOffset(clockOffset() + 3 * 60_000);
+	await expectError(slots.acceptListing(circleListing.id, { signedXdr: staleSigned }), 400, "the co-signature lasts about 2 minutes");
+	const signedAccept = await mockWallet.signTransaction((await slots.prepareAccept(circleListing.id)).xdr, owner);
+	const bought = await slots.acceptListing(circleListing.id, { signedXdr: signedAccept });
+	ok(bought.status === "sold", "Ada accepts: one signature, the slot is hers");
+	ok((await slots.acceptListing(circleListing.id, { signedXdr: signedAccept })).status === "sold", "repeating the accept returns the same result");
+	ok(Math.abs(walletBefore - 20 - Number((await mockWallet.usdcBalance(owner)).usdc)) < 1e-6, "she paid the 20 USDC asking price");
+	const community = bought.group.id;
+	const cc = await circle.getCycle(community);
+	const myRow = cc.contributions.find((x) => x.member.userId === me.id);
+	ok(cc.schedule[6]?.member.userId === me.id, "Ada now holds slot 7 in Community Circle");
+	ok(
+		!!myRow && (myRow.coveredByPreviousHolder ? myRow.paid && cc.myAmountDue === null : cc.myAmountDue !== null),
+		myRow?.coveredByPreviousHolder ? "Dami had paid this round: it counts for Ada (paid by previous holder)" : "Ada owes this round",
+	);
 	const { readDb: snapshot } = await import("@/mocks/db");
 	const { paidThisRound } = await import("@/mocks/engine");
-	const cc = await circle.getCycle(community);
-	const damiId = request.from.userId;
+	const damiId = bought.seller.userId;
 	const paidByDami = snapshot().contributions.filter((x) => x.groupId === community && x.userId === damiId).map((x) => x.round);
 	ok(
-		paidByDami.length > 0 && paidByDami.every((round) => paidThisRound(snapshot(), community, round, me.id)) && cc.myAmountDue === "100.00",
-		`rounds Dami paid (${paidByDami.map((x) => x + 1).join(", ")}) count for Ada's slot; she owes only what's next`,
+		paidByDami.length > 0 && paidByDami.every((round) => paidThisRound(snapshot(), community, round, me.id)),
+		`rounds Dami paid (${paidByDami.map((x) => x + 1).join(", ")}) count for Ada's slot`,
 	);
-	// Another member of Community Circle lists their slot: Ada already holds one there.
+	ok(
+		(await activity.listActivity({ type: "slot_purchase" })).results.some((a) => a.group?.id === community && a.amount === "20.00"),
+		"the purchase shows in Activity",
+	);
+	// Someone else in Community Circle lists their slot: Ada already holds one there.
 	const { updateDb } = await import("@/mocks/db");
 	const { createListing } = await import("@/mocks/slots");
 	const { nowMs } = await import("@/mocks/clock");
 	const second = updateDb((db) => {
 		const g = db.groups.find((x) => x.id === community)!;
-		const seller = g.cycle!.schedule.find((id, i) => i === g.cycle!.schedule.length - 1)!;
-		return createListing(db, g, seller, { expiresAt: new Date(nowMs() + 3 * 86_400_000).toISOString() }, new Date(nowMs()).toISOString());
+		return createListing(db, g, g.cycle!.schedule.at(-1)!, "10", new Date(nowMs()).toISOString());
 	});
-	await expectError(slots.requestTakeover(second.id), 409, "duplicate ownership: a second slot in the same group is refused");
+	await expectError(slots.requestTakeover(second.id), 409, "one slot per person per group");
 
-	// Ada lists her own slot in Summer Fund.
-	await expectError(slots.createSlotListing(summer.id, { expiresAt: new Date(Date.now() - 86_400_000).toISOString() }), 400, "a listing must end in the future");
-	const own = await slots.createSlotListing(summer.id, { expiresAt: new Date(Date.now() + clockOffset() + 5 * 86_400_000).toISOString(), reason: "Testing" });
-	ok(own.mine && own.status === "open" && own.slotNumber === 6, "Ada lists her slot #6");
-	await expectError(slots.requestTakeover(own.id), 409, "you can't request your own slot");
-	await expectError(slots.createSlotListing(summer.id, { expiresAt: own.expiresAt }), 409, "one listing per slot");
-	const cancelled = await slots.cancelSlotListing(own.id);
-	ok(cancelled.status === "cancelled", "Ada cancels the listing; the slot stays hers");
+	// Ada lists her own slot in Summer Fund, a simulated buyer asks, she puts them to a vote, then withdraws.
+	const sellable = await slots.getSellerEligibility(summer.id);
+	ok(sellable.eligible && sellable.position === 5 && sellable.checks.every((c) => c.ok), "Ada can list her slot 6");
+	await expectError(slots.createListing(summer.id, { askingPrice: "-1" }), 400, "the asking price is a decimal string");
+	const own = await slots.createListing(summer.id, { askingPrice: "15" });
+	ok(own.mine && own.status === "open" && own.position === 5 && own.buyerEligibility === null, "Ada lists slot 6 for 15 USDC");
+	await expectError(slots.requestTakeover(own.id), 400, "you can't request your own slot");
+	await expectError(slots.createListing(summer.id, { askingPrice: "15" }), 409, "one listing per slot");
+	ok((await slots.getSellerEligibility(summer.id)).checks.find((c) => c.key === "notListed")?.ok === false, "the checklist now says it's listed");
+	setClockOffset(clockOffset() + 60_000);
+	const withRequest = await slots.getListing(own.id);
+	ok((withRequest.requests?.length ?? 0) > 0, `a simulated buyer asks for it (${withRequest.requests?.[0]?.buyer.firstName})`);
+	const picked = await slots.selectBuyer(own.id, withRequest.requests![0]!.buyer.userId);
+	ok(picked.transfer?.proposalStatus === "active" && picked.transfer.buyer.userId === withRequest.requests![0]!.buyer.userId, "Ada puts them to the group's vote");
+	await slots.withdrawListing(summer.id);
+	ok((await slots.getListing(own.id)).status === "withdrawn", "Ada withdraws the listing; the slot stays hers");
+	await expectError(slots.withdrawListing(summer.id), 404, "nothing left to withdraw");
 
 	// ---- a missed contribution of Ada's own, then she settles it
 	setClockOffset(clockOffset() + 30 * 86_400_000);
@@ -284,43 +333,95 @@ async function main() {
 		ok(!left.some((x) => x.id === mine.id), "Ada settles her own missed contribution");
 	} else ok(false, "expected Ada to default after skipping 30 days");
 
-	// ---- personal savings (v3, provisional routes; the clock is 30 days on from here)
+	// ---- personal savings (v3: prepare → the wallet signs → confirm; the clock is 30 days on from here)
 	const savings = await import("@/features/savings/api");
 	const plans = await savings.listSavingsPlans();
-	const travel = plans.results.find((p) => p.name === "Travel fund")!;
-	const laptop = plans.results.find((p) => p.name === "Laptop fund")!;
-	ok(travel?.kind === "flexible" && travel.balance === "1200.00" && travel.progressPercent === 40, "Travel fund: flexible, 1,200 of 3,000 (40%)");
-	ok(laptop?.kind === "locked" && laptop.withdrawable === "0.00" && !!laptop.unlocksAt, "Laptop fund: locked, nothing withdrawable");
-	const sum = await savings.getSavingsSummary();
-	ok(sum.totalSaved === "2000.00" && sum.activePlans === 2, `savings summary: ${sum.totalSaved} in ${sum.activePlans} plans`);
+	const travel = plans.find((p) => p.name === "Travel fund")!;
+	const laptop = plans.find((p) => p.name === "Laptop fund")!;
+	ok(
+		travel?.lock === "flexible" && travel.balance === "1200.00" && travel.progressPercent === 40 && travel.canWithdraw && travel.movements === null,
+		"Travel fund: flexible, 1,200 of 3,000 (40%), withdrawable; the list has no movements",
+	);
+	ok(laptop?.lock === "until_date" && !laptop.canWithdraw && !!laptop.unlockAt, "Laptop fund: locked until a date");
+	const dash = await savings.getSavingsOverview();
+	ok(
+		dash.personal.balance === "2000.00" && dash.personal.plans === 2 && Math.abs(Number(dash.totalSaved) - Number(dash.groups.totalSaved) - 2000) < 1e-6,
+		`savings dashboard: ${dash.personal.balance} personal + ${dash.groups.totalSaved} in groups = ${dash.totalSaved}`,
+	);
 
-	await expectError(savings.createSavingsPlan({ name: "Rent", kind: "locked", targetAmount: "500" }), 400, "a locked plan needs a release date");
-	await expectError(savings.createSavingsPlan({ name: "Travel fund", kind: "flexible", targetAmount: "100" }), 409, "plan names are unique per person");
-	const rent = await savings.createSavingsPlan({ name: "Rent", kind: "flexible", targetAmount: "100.00" });
-	ok(rent.balance === "0.00" && rent.ownerWallet === me.wallet!.publicKey && !!rent.deposit, "a new plan is owned by the linked wallet");
+	const sign = (xdr: string) => mockWallet.signTransaction(xdr, owner);
+	await expectError(savings.createSavingsPlan({ name: "Rent", lock: "until_date", target: "500" }), 400, "a date lock needs unlockAt");
+	await expectError(
+		savings.createSavingsPlan({ name: "Rent", lock: "flexible", target: "500", unlockAt: "2031-01-01T00:00:00Z" }),
+		400,
+		"a flexible goal takes no date",
+	);
+	await expectError(savings.createSavingsPlan({ name: "R", lock: "flexible", target: "500" }), 400, "a goal name needs 2 characters");
+	await expectError(
+		savings.createSavingsPlan({ name: "Rent", lock: "until_date", target: "500", unlockAt: "2031-01-01T00:00:00" }),
+		400,
+		"unlockAt needs a timezone",
+	);
+	const prepared = await savings.createSavingsPlan({ name: "Rent", lock: "until_target", target: "20.00" });
+	ok(!!prepared.xdr && prepared.plan === null, "creating a goal returns a transaction to sign");
+	await expectError(
+		savings.confirmSavingsPlan(prepared.planId, { signedXdr: await mockWallet.signTransaction(prepared.xdr!, "GSOMEONEELSE") }),
+		400,
+		"a goal signed by another wallet is refused",
+	);
+	const rent = await savings.confirmSavingsPlan(prepared.planId, { signedXdr: await sign(prepared.xdr!) });
+	ok(rent.ownerAddress === owner && rent.balance === "0.00" && !rent.canWithdraw && !!rent.txUrl, "confirmed: the linked wallet owns the goal");
+	ok((await savings.confirmSavingsPlan(prepared.planId, { signedXdr: await sign(prepared.xdr!) })).id === rent.id, "confirming twice returns the same goal");
 
-	const before = Number((await mockWallet.usdcBalance(me.wallet!.publicKey)).usdc);
-	const depHash = await mockWallet.pay({ ...rent.deposit!, amount: "10.00" }, me.wallet!.publicKey);
-	await expectError(savings.recordDeposit(rent.id, { amount: "10.00" }), 400, "a deposit needs its transaction hash");
-	await savings.recordDeposit(rent.id, { amount: "10.00", txHash: depHash });
-	await expectError(savings.recordDeposit(rent.id, { amount: "10.00", txHash: depHash }), 409, "a deposit hash can't be reused");
-	const rentNow = await savings.getSavingsPlan(rent.id);
-	ok(rentNow.balance === "10.00" && rentNow.progressPercent === 10, "deposit lands: 10.00 saved (10%)");
+	const before = Number((await mockWallet.usdcBalance(owner)).usdc);
+	await expectError(savings.prepareDeposit(rent.id, { amount: "1000000" }), 400, "can't deposit more than the wallet holds");
+	const signedDeposit = await sign((await savings.prepareDeposit(rent.id, { amount: "15.00" })).xdr);
+	await expectError(savings.confirmDeposit(rent.id, {}), 400, "a deposit needs the signed transaction");
+	await savings.confirmDeposit(rent.id, { signedXdr: signedDeposit });
+	const repeated = await savings.confirmDeposit(rent.id, { signedXdr: signedDeposit });
+	ok(repeated.balance === "15.00" && !repeated.canWithdraw, "a repeated confirm records the deposit once; below the target it stays locked");
+	await expectError(savings.prepareWithdrawal(rent.id, { amount: "1.00" }), 409, "a target lock refuses withdrawals below the target");
+	await savings.confirmDeposit(rent.id, { signedXdr: await sign((await savings.prepareDeposit(rent.id, { amount: "5.00" })).xdr) });
+	const reached = await savings.getSavingsPlan(rent.id);
+	ok(
+		reached.balance === "20.00" && reached.progressPercent === 100 && reached.canWithdraw && reached.movements?.length === 2 && reached.movements[0]!.balanceAfter === "20.00",
+		"target reached: unlocked; movements newest first, with the balance after each",
+	);
+	await expectError(savings.prepareWithdrawal(rent.id, { amount: "21.00" }), 409, "can't withdraw more than the balance");
+	await savings.confirmWithdrawal(rent.id, { signedXdr: await sign((await savings.prepareWithdrawal(rent.id, { amount: "4.00" })).xdr) });
+	const after = Number((await mockWallet.usdcBalance(owner)).usdc);
+	const relocked = await savings.getSavingsPlan(rent.id);
+	ok(
+		relocked.balance === "16.00" && !relocked.canWithdraw && Math.abs(after - (before - 20 + 4)) < 1e-6,
+		"the withdrawal goes back to the owner wallet, and below the target the goal locks again",
+	);
 
-	await expectError(savings.withdrawSavings(rent.id, { amount: "11.00", signature: "x".repeat(40) }), 400, "can't withdraw more than the balance");
-	await expectError(savings.withdrawSavings(rent.id, { amount: "4.00", signature: "" }), 400, "a withdrawal needs the owner wallet's signature");
-	await savings.withdrawSavings(rent.id, { amount: "4.00", signature: "x".repeat(40) });
-	const after = Number((await mockWallet.usdcBalance(me.wallet!.publicKey)).usdc);
-	ok((await savings.getSavingsPlan(rent.id)).balance === "6.00" && Math.abs(after - (before - 10 + 4)) < 1e-6, "flexible withdrawal goes back to the owner wallet");
-	const planTxs = await savings.listSavingsTransactions(rent.id);
-	ok(planTxs.results.length === 2 && planTxs.results[0]!.kind === "withdrawal", "plan history: the withdrawal, then the deposit");
-
-	await expectError(savings.withdrawSavings(laptop.id, { amount: "1.00", signature: "x".repeat(40) }), 403, "a locked plan refuses withdrawals before its date");
+	await expectError(savings.prepareWithdrawal(laptop.id, { amount: "1.00" }), 409, "a date lock refuses withdrawals before its date");
 	setClockOffset(clockOffset() + 6 * 86_400_000);
 	const released = await savings.getSavingsPlan(laptop.id);
-	ok(released.withdrawable === "800.00", "after the release date the locked plan's balance is withdrawable");
-	await savings.withdrawSavings(laptop.id, { amount: "800.00", signature: "x".repeat(40) });
-	ok((await savings.getSavingsPlan(laptop.id)).balance === "0.00", "the released plan can be withdrawn in full");
+	ok(released.canWithdraw && released.balance === "800.00", "after the release date the date-locked goal can be withdrawn");
+	await savings.confirmWithdrawal(laptop.id, { signedXdr: await sign((await savings.prepareWithdrawal(laptop.id, { amount: "800.00" })).xdr) });
+	const emptied = await savings.getSavingsPlan(laptop.id);
+	ok(emptied.balance === "0.00" && !emptied.canWithdraw, "the released goal is withdrawn in full; nothing left to withdraw");
+
+	const savingsDeposits = await activity.listActivity({ type: "savings_deposit" });
+	ok(
+		savingsDeposits.results.some((a) => a.plan?.id === rent.id && a.group === null) &&
+			savingsDeposits.results.every((a) => a.kind === "savings_deposit"),
+		"savings deposits show in Activity, linked to their goal",
+	);
+	const statement = await activity.getStatement({});
+	ok(
+		Number(statement.totals.savingsDeposits) >= 20 && Number(statement.totals.savingsWithdrawals) === 804,
+		`statement totals: ${statement.totals.savingsDeposits} deposited, ${statement.totals.savingsWithdrawals} withdrawn`,
+	);
+
+	// ---- test USDC faucet (testnet; the simulated wallet already trusts USDC)
+	await expectError(wallet.prepareFaucetTrustline(), 409, "the faucet's trustline step: already trusts USDC");
+	const usdcBefore = Number((await mockWallet.usdcBalance(owner)).usdc);
+	const sent = await wallet.requestTestUsdc();
+	ok(sent.amount === "1000" && Number((await mockWallet.usdcBalance(owner)).usdc) === usdcBefore + 1000, "the faucet sends 1,000 test USDC");
+	await expectError(wallet.requestTestUsdc(), 429, "the faucet gives once per wallet per hour");
 
 	await expectError(groups.getGroup("00000000-0000-0000-0000-000000000000"), 404, "unknown group");
 

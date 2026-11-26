@@ -49,6 +49,27 @@ export async function payWithWallet(instructions: PaymentInstructionsDto, addres
 	return (await source()).pay(instructions, address);
 }
 
+/** Signs a transaction the API built (`xdr`, for `address`); the API submits it. Resolves with the signed XDR. */
+export async function signTransaction(xdr: string, address: string) {
+	return (await source()).signTransaction(xdr, address);
+}
+
+/** The hash of a signed transaction (what a retried confirm sends instead of the transaction). */
+export async function transactionHash(signedXdr: string) {
+	return (await source()).transactionHash(signedXdr);
+}
+
+/** Signs a transaction the API built and submits it from the browser; resolves with the hash. */
+export async function signAndSubmit(xdr: string, address: string) {
+	return (await source()).signAndSubmit(xdr, address);
+}
+
+/** Creates the wallet's Testnet account with test XLM (Friendbot). Real wallets only. */
+export async function fundTestnetAccount(address: string) {
+	if (!LIVE_WALLET) return;
+	await (await import("@/features/wallet/stellarKit")).fundAccount(address);
+}
+
 /** Real wallets only (the simulated one always holds USDC): one signature, then Horizon. */
 export async function addUsdcTrustline(address: string) {
 	if (!LIVE_WALLET) return;

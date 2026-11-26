@@ -33,18 +33,29 @@ export default function TransactionPage() {
 					</section>
 					<section className="rounded-[20px] bg-panel px-6 py-2">
 						<Row label="Type" value={ACTIVITY_LABEL[data.kind]} />
-						<Row
-							label="Group"
-							value={
-								data.group ? (
-									<Link href={pageRoutes.dashboardRoutes.CIRCLE(data.group.id)} className="text-primary underline-offset-4 hover:underline">
-										{data.group.name}
+						{data.plan ? (
+							<Row
+								label="Savings goal"
+								value={
+									<Link href={pageRoutes.dashboardRoutes.SAVINGS_PLAN(data.plan.id)} className="text-primary underline-offset-4 hover:underline">
+										{data.plan.name}
 									</Link>
-								) : (
-									"—"
-								)
-							}
-						/>
+								}
+							/>
+						) : (
+							<Row
+								label="Group"
+								value={
+									data.group ? (
+										<Link href={pageRoutes.dashboardRoutes.CIRCLE(data.group.id)} className="text-primary underline-offset-4 hover:underline">
+											{data.group.name}
+										</Link>
+									) : (
+										"—"
+									)
+								}
+							/>
+						)}
 						<Row
 							label="Transaction"
 							value={

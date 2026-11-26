@@ -1,182 +1,187 @@
 "use client";
 
 import { useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "@repo/ui/sonner";
 import { errorMessage } from "@/features/auth/hooks";
 import {
-	cancelSlotListing,
-	createSlotListing,
-	getMySlot,
-	getSlotListing,
-	getTakeover,
-	listSlotListings,
+	acceptListing,
+	createListing,
+	getListing,
+	getMyListings,
+	getSellerEligibility,
+	listMarketplace,
 	listSlotTransfers,
-	listTakeovers,
+	prepareAccept,
 	requestTakeover,
-	signTakeover,
-	voteOnTakeover,
-	withdrawTakeover,
+	selectBuyer,
+	withdrawListing,
+	withdrawTakeoverRequest,
+	type MarketplaceQuery,
 } from "@/features/slots/api";
-import { isWalletDismissal, signMessage, walletErrorMessage, walletFor } from "@/features/wallet/kit";
+import { isWalletDismissal, signTransaction, walletErrorMessage, walletFor } from "@/features/wallet/kit";
+import { confirmSigned, needsNewSignature, type TxPhase } from "@/features/wallet/transactions";
 import { ApiError } from "@/lib/api/client";
-import type { CreateSlotListingDto, SlotTakeoverDto } from "@/lib/api/dto";
+import type { ListingDto } from "@/lib/api/dto";
 
-/** Slot state moves on its own (members vote, requests expire): polled like the cycle. */
-const POLL = 20_000;
+/** Slot data moves while you look (requests arrive, votes land, approvals expire): it's polled. */
+const POLL = 15_000;
 
-export function useSlotListings(mine = false) {
+export function useMarketplace(query: MarketplaceQuery) {
 	return useQuery({
-		queryKey: ["slots", "listings", mine],
-		queryFn: () => listSlotListings({ mine, limit: 50 }),
+		queryKey: ["slots", "marketplace", query],
+		queryFn: () => listMarketplace(query),
+		placeholderData: keepPreviousData,
 		refetchInterval: POLL,
 	});
 }
 
-export function useSlotListing(id: string) {
-	return useQuery({ queryKey: ["slots", "listing", id], queryFn: () => getSlotListing(id), refetchInterval: POLL });
+export function useMyListings() {
+	return useQuery({ queryKey: ["slots", "mine"], queryFn: getMyListings, refetchInterval: POLL });
 }
 
-/** The caller's slot in a group; `null` when they have none left to collect (404). */
-export function useMySlot(groupId: string, enabled = true) {
+export function useListing(id: string) {
+	return useQuery({ queryKey: ["slots", "listing", id], queryFn: () => getListing(id), refetchInterval: 10_000 });
+}
+
+/** The caller's slot in a group and whether they can list it. A 404 (not a member) isn't retried. */
+export function useSellerEligibility(groupId: string, enabled = true) {
 	return useQuery({
-		queryKey: ["slots", "mine", groupId],
-		queryFn: async () => {
-			try {
-				return await getMySlot(groupId);
-			} catch (error) {
-				if (error instanceof ApiError && error.status === 404) return null;
-				throw error;
-			}
-		},
+		queryKey: ["slots", "eligibility", groupId],
+		queryFn: () => getSellerEligibility(groupId),
 		enabled,
+		retry: false,
 		refetchInterval: POLL,
 	});
-}
-
-export function useMyTakeovers() {
-	return useQuery({
-		queryKey: ["slots", "takeovers", "mine"],
-		queryFn: () => listTakeovers({ mine: true, limit: 50 }),
-		refetchInterval: POLL,
-	});
-}
-
-export function useTakeover(id: string) {
-	return useQuery({ queryKey: ["slots", "takeover", id], queryFn: () => getTakeover(id), refetchInterval: POLL });
 }
 
 export function useSlotTransfers(groupId: string, enabled = true) {
-	return useQuery({
-		queryKey: ["slots", "transfers", groupId],
-		queryFn: () => listSlotTransfers(groupId, { limit: 50 }),
-		enabled,
-		refetchInterval: POLL,
-	});
+	return useQuery({ queryKey: ["slots", "transfers", groupId], queryFn: () => listSlotTransfers(groupId), enabled, retry: false });
 }
 
-/** A slot change touches the group too (members, schedule, cycle). */
-function invalidate(queryClient: ReturnType<typeof useQueryClient>, groupId?: string) {
-	void queryClient.invalidateQueries({ queryKey: ["slots"] });
-	void queryClient.invalidateQueries({ queryKey: ["notifications"] });
-	if (groupId) {
-		for (const key of [["cycle", groupId], ["group", groupId], ["groups"], ["history", groupId]])
-			void queryClient.invalidateQueries({ queryKey: key });
-	}
-}
-
-export function useCreateSlotListing(groupId: string) {
+/** After anything that changes a listing: slots, and what a transfer touches (the group, its votes, wallets, activity). */
+function useInvalidate() {
 	const queryClient = useQueryClient();
+	return (groupId?: string) => {
+		void queryClient.invalidateQueries({ queryKey: ["slots"] });
+		void queryClient.invalidateQueries({ queryKey: ["notifications"] });
+		void queryClient.invalidateQueries({ queryKey: ["wallet", "usdc"] });
+		void queryClient.invalidateQueries({ queryKey: ["activity"] });
+		void queryClient.invalidateQueries({ queryKey: ["groups"] });
+		if (groupId) {
+			void queryClient.invalidateQueries({ queryKey: ["cycle", groupId] });
+			void queryClient.invalidateQueries({ queryKey: ["proposals", groupId] });
+			void queryClient.invalidateQueries({ queryKey: ["group", groupId] });
+		}
+	};
+}
+
+const fail = (title: string) => (error: unknown) => toast.error(title, { description: errorMessage(error) });
+
+export function useCreateListing(groupId: string) {
+	const invalidate = useInvalidate();
 	return useMutation({
-		mutationFn: (input: CreateSlotListingDto) => createSlotListing(groupId, input),
+		mutationFn: (askingPrice: string) => createListing(groupId, { askingPrice }),
 		onSuccess: () => {
-			invalidate(queryClient, groupId);
-			toast.success("Slot listed", { description: "Eligible people can now request it. The group decides together." });
+			invalidate(groupId);
+			toast.success("Slot listed", { description: "It's in the marketplace. You'll hear when someone asks for it." });
 		},
-		onError: (error) => toast.error("Could not list your slot", { description: errorMessage(error) }),
+		onError: fail("Could not list your slot"),
 	});
 }
 
-export function useCancelSlotListing() {
-	const queryClient = useQueryClient();
+export function useWithdrawListing(groupId: string) {
+	const invalidate = useInvalidate();
 	return useMutation({
-		mutationFn: cancelSlotListing,
-		onSuccess: (listing) => {
-			invalidate(queryClient, listing.group.id);
-			toast.success("Listing cancelled", { description: "Your slot stays yours." });
-		},
-		onError: (error) => toast.error("Could not cancel", { description: errorMessage(error) }),
-	});
-}
-
-export function useRequestTakeover() {
-	const queryClient = useQueryClient();
-	return useMutation({
-		mutationFn: requestTakeover,
+		mutationFn: () => withdrawListing(groupId),
 		onSuccess: () => {
-			invalidate(queryClient);
-			toast.success("Takeover requested", { description: "The group reviews it. You'll sign the transfer once it's approved." });
+			invalidate(groupId);
+			toast.success("Listing withdrawn", { description: "Your slot stays yours." });
 		},
-		onError: (error) => toast.error("Could not request the slot", { description: errorMessage(error) }),
+		onError: fail("Could not withdraw the listing"),
 	});
 }
 
-export function useVoteOnTakeover(id: string) {
-	const queryClient = useQueryClient();
+export function useRequestTakeover(listing: ListingDto | undefined) {
+	const invalidate = useInvalidate();
 	return useMutation({
-		mutationFn: (choice: "yes" | "no") => voteOnTakeover(id, choice),
-		onSuccess: (t, choice) => {
-			queryClient.setQueryData(["slots", "takeover", id], t);
-			invalidate(queryClient, t.group.id);
-			toast.success(choice === "yes" ? "You approved the takeover" : "You rejected the request", {
-				description:
-					t.status === "approved" ? "It reached the threshold. The incoming member signs next." : "Your vote is recorded.",
-			});
+		mutationFn: () => requestTakeover(listing!.id),
+		onSuccess: () => {
+			invalidate();
+			toast.success("Request sent", { description: "The seller chooses who goes to the group's vote." });
 		},
-		onError: (error) => toast.error("Could not record your vote", { description: errorMessage(error) }),
+		onError: fail("Could not send your request"),
 	});
 }
 
-/** What the incoming member's wallet signs (the backend will define the real Soroban request). */
-const transferMessage = (t: SlotTakeoverDto) =>
-	`Saji: take over slot #${t.slotNumber} in "${t.group.name}" (${t.id}) from ${t.from.userId} to ${t.toWallet}.`;
+export function useWithdrawTakeoverRequest(listing: ListingDto | undefined) {
+	const invalidate = useInvalidate();
+	return useMutation({
+		mutationFn: () => withdrawTakeoverRequest(listing!.id),
+		onSuccess: () => {
+			invalidate();
+			toast.success("Request withdrawn");
+		},
+		onError: fail("Could not withdraw your request"),
+	});
+}
 
-/** The incoming member signs the Soroban transfer with the wallet they requested with. */
-export function useSignTakeover() {
-	const queryClient = useQueryClient();
-	const [phase, setPhase] = useState<"idle" | "wallet" | "submitting">("idle");
+/** The seller puts one buyer to the group's vote. */
+export function useSelectBuyer(listing: ListingDto | undefined) {
+	const invalidate = useInvalidate();
+	return useMutation({
+		mutationFn: (buyerId: string) => selectBuyer(listing!.id, buyerId),
+		onSuccess: () => {
+			invalidate(listing?.group.id);
+			toast.success("Put to a vote", { description: "Every other member votes. The buyer can accept once it passes." });
+		},
+		onError: fail("Could not open the vote"),
+	});
+}
+
+/**
+ * The approved buyer takes the slot: prepare (Saji co-signs; it lasts ~2 minutes, so the wallet
+ * opens right away) → the wallet signs → accept (waits for Stellar; a 503 is retried by hash). In
+ * the API's simulated mode prepare answers 409 and accept takes `{}`.
+ */
+export function useAcceptSlot(listing: ListingDto | undefined) {
+	const invalidate = useInvalidate();
+	const [phase, setPhase] = useState<TxPhase>("idle");
 	const mutation = useMutation({
-		mutationFn: async (t: SlotTakeoverDto) => {
+		mutationFn: async (buyerWallet: string) => {
+			if (!listing) throw new Error("The listing hasn't loaded yet.");
 			try {
+				// Connect the wallet first, so the 2-minute co-signature isn't spent on it.
+				const address = await walletFor(buyerWallet);
+				setPhase("preparing");
+				let xdr: string;
+				try {
+					xdr = (await prepareAccept(listing.id)).xdr;
+				} catch (error) {
+					if (error instanceof ApiError && error.status === 409 && /simulated/i.test(error.message)) {
+						setPhase("confirming");
+						return await acceptListing(listing.id, {});
+					}
+					throw error;
+				}
 				setPhase("wallet");
-				const address = await walletFor(t.toWallet);
-				const signature = await signMessage(transferMessage(t), address);
-				setPhase("submitting");
-				return await signTakeover(t.id, signature);
+				const signedXdr = await signTransaction(xdr, address);
+				setPhase("confirming");
+				return await confirmSigned((body) => acceptListing(listing.id, body), signedXdr);
 			} finally {
 				setPhase("idle");
 			}
 		},
-		onSuccess: (t) => {
-			invalidate(queryClient, t.group.id);
-			toast.success("Slot transferred", { description: `You now hold slot #${t.slotNumber} in ${t.group.name}.` });
+		onSuccess: () => {
+			invalidate(listing?.group.id);
+			toast.success("Slot transferred", { description: `You're now a member of ${listing?.group.name}.` });
 		},
 		onError: (error) => {
-			if (isWalletDismissal(error)) toast.info("Cancelled", { description: "Nothing was signed." });
-			else toast.error("Could not complete the transfer", { description: walletErrorMessage(error, errorMessage(error)) });
+			if (isWalletDismissal(error)) toast.info("Cancelled", { description: "Nothing was signed or paid." });
+			else if (needsNewSignature(error))
+				toast.error("The signature expired", { description: "Saji's co-signature lasts about 2 minutes. Accept again to sign a fresh one." });
+			else toast.error("Could not take the slot", { description: walletErrorMessage(error, errorMessage(error)) });
 		},
 	});
 	return { ...mutation, phase };
-}
-
-export function useWithdrawTakeover() {
-	const queryClient = useQueryClient();
-	return useMutation({
-		mutationFn: withdrawTakeover,
-		onSuccess: (t) => {
-			invalidate(queryClient, t.group.id);
-			toast.success("Request withdrawn");
-		},
-		onError: (error) => toast.error("Could not withdraw", { description: errorMessage(error) }),
-	});
 }

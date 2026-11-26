@@ -39,7 +39,6 @@ export const pageRoutes = {
 		MY_LISTINGS: "/groups/marketplace?mine=1",
 		SLOT_LISTING: (listingId: string) => `/groups/marketplace/${listingId}`,
 		LIST_SLOT: (id: string) => `/groups/${id}/slot/list`,
-		TAKEOVER: (id: string, takeoverId: string) => `/groups/${id}/takeovers/${takeoverId}`,
 		SLOT_TRANSFERS: (id: string) => `/groups/${id}/transfers`,
 
 		ACTIVITY: "/activity",

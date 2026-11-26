@@ -1,7 +1,7 @@
 /**
  * Where data comes from (`NEXT_PUBLIC_API_SOURCE`).
  *
- * - `live` (the default): the Railway API, through this app's `/api/v1` proxy (next.config.ts).
+ * - `live` (the default): the Saji API (pay.usesaji.com), through this app's `/api/v1` proxy (next.config.ts).
  * - `mock`: the in-browser mock (`src/mocks`, localStorage) answers every route with the API's DTOs —
  *   offline demos (`demo@usesaji.com`), the dev panel's clock, and `pnpm test:mock`.
  *

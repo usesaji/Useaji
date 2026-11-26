@@ -3,7 +3,7 @@
 import type { StellarWalletsKit as Kit } from "@creit.tech/stellar-wallets-kit/sdk";
 import type { ModuleInterface } from "@creit.tech/stellar-wallets-kit/types";
 import type { PaymentInstructionsDto } from "@/lib/api/dto";
-import { HORIZON_URL, NETWORK_PASSPHRASE, USDC_ISSUER } from "@/lib/stellar/config";
+import { FRIENDBOT_URL, HORIZON_URL, NETWORK_PASSPHRASE, USDC_ISSUER } from "@/lib/stellar/config";
 
 /**
  * The real wallets, through Stellar Wallets Kit: Freighter, xBull, Albedo, LOBSTR, Hana (browser)
@@ -90,6 +90,35 @@ export async function addUsdcTrustline(address: string) {
 		.build();
 	const { signedTxXdr } = await kit.signTransaction(tx.toXDR(), { address, networkPassphrase: NETWORK_PASSPHRASE });
 	return submit(signedTxXdr, "USDC");
+}
+
+/** Signs a transaction the API prepared (`xdr`) for `address`; the API submits it. */
+export async function signTransaction(xdr: string, address: string) {
+	const kit = await loadKit();
+	const { signedTxXdr } = await kit.signTransaction(xdr, { address, networkPassphrase: NETWORK_PASSPHRASE });
+	return signedTxXdr;
+}
+
+/** A signed transaction's hash (hex), to retry a confirm without submitting it twice. */
+export async function transactionHash(signedXdr: string) {
+	const { TransactionBuilder } = await import("@stellar/stellar-sdk");
+	return TransactionBuilder.fromXDR(signedXdr, NETWORK_PASSPHRASE).hash().toString("hex");
+}
+
+/** Signs a transaction the API prepared and submits it to Horizon itself (the faucet's trustline has no confirm). */
+export async function signAndSubmit(xdr: string, address: string) {
+	return submit(await signTransaction(xdr, address), "USDC");
+}
+
+/** Creates the account on Testnet with test XLM (Friendbot). An account that already exists is fine. */
+export async function fundAccount(address: string) {
+	const response = await fetch(`${FRIENDBOT_URL}?addr=${encodeURIComponent(address)}`, { signal: AbortSignal.timeout(30_000) }).catch(() => {
+		throw new Error("Friendbot didn’t answer. Try again in a moment.");
+	});
+	if (response.ok) return;
+	const body = (await response.json().catch(() => null)) as { detail?: string } | null;
+	if (/already funded|createAccountAlreadyExist/i.test(body?.detail ?? "")) return;
+	throw new Error("Friendbot couldn’t fund this wallet. Try again in a moment.");
 }
 
 /** The wallet's USDC on Testnet, from Horizon (public, read-only). */

@@ -5,28 +5,31 @@ import Link from "next/link";
 import { LinkButton } from "@/components/LinkButton";
 import { Money } from "@/components/Money";
 import { NoPlansCard, PlanCard } from "@/features/savings/components/SavingsUi";
-import { useSavingsPlans, useSavingsSummary } from "@/features/savings/hooks";
+import { useSavingsOverview, useSavingsPlans } from "@/features/savings/hooks";
 import type { GroupsOverviewDto } from "@/lib/api/dto";
 import { formatMoney, relative } from "@/lib/format";
 import { pageRoutes } from "@/lib/routes";
 import { useNow } from "@/lib/use-now";
 
 /**
- * The savings dashboard (v3 screen 01): total saved across group savings (`GET /groups/overview`)
- * and personal savings (`GET /savings/summary`), the soonest contribution due, a create-goal
- * button, the newest personal goal, and the "save your way" card.
+ * The savings dashboard (v3 screen 01): total saved across group savings and personal savings
+ * (`GET /savings/overview`: "contributed and saved", not a wallet balance), the soonest
+ * contribution due, a create-goal button, the newest personal goal, and the "save your way" card.
+ * Until the savings overview answers, it shows the group half from `GET /groups/overview`.
  */
 export function SavingsDashboard({ overview }: { overview: GroupsOverviewDto | undefined }) {
-	const summary = useSavingsSummary();
+	const savings = useSavingsOverview();
 	const plans = useSavingsPlans();
 	const now = useNow();
 	const r = pageRoutes.dashboardRoutes;
-	const asset = overview?.asset ?? "USDC";
-	const group = Number(overview?.totalSaved ?? 0);
-	// Personal savings aren't in the API yet: if the route fails, show group savings alone.
-	const personal = summary.data ? Number(summary.data.totalSaved) : null;
-	const plan = plans.data?.results[0];
-	const due = overview?.nextDue ?? null;
+	const groups = savings.data?.groups ?? overview;
+	const asset = groups?.asset ?? "USDC";
+	const group = Number(groups?.totalSaved ?? 0);
+	// If the savings overview fails, show group savings alone.
+	const personal = savings.data ? Number(savings.data.personal.balance) : null;
+	const total = savings.data ? Number(savings.data.totalSaved) : group;
+	const plan = plans.data?.[0];
+	const due = groups?.nextDue ?? null;
 
 	return (
 		<div className="space-y-4">
@@ -37,13 +40,13 @@ export function SavingsDashboard({ overview }: { overview: GroupsOverviewDto | u
 			<div className="grid items-start gap-5 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
 				<div className="min-w-0 space-y-5">
 					<section className="rounded-[20px] bg-panel p-5">
-						<p className="text-xs tracking-wide uppercase">Total saved</p>
+						<p className="text-xs tracking-wide uppercase">Total contributed &amp; saved</p>
 						<div className="mt-3 space-y-2 text-xs font-light text-ink-muted md:text-sm">
 							<p>Group savings · {formatMoney(group, asset)}</p>
 							{personal !== null && <p>Personal savings · {formatMoney(personal, asset)}</p>}
 						</div>
 						<p className="mt-4 truncate text-[40px] leading-none font-medium tracking-tight md:text-[52px]">
-							{overview ? <Money amount={group + (personal ?? 0)} asset={asset} /> : "…"}
+							{groups ? <Money amount={total} asset={asset} /> : "…"}
 						</p>
 						{due && (
 							<Link href={r.CIRCLE(due.groupId)} className="mt-4 inline-block text-xs text-primary md:text-sm">

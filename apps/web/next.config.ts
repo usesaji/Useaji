@@ -8,8 +8,8 @@ import type { NextConfig } from "next";
  */
 const BASE_PATH = process.env.VERCEL_ENV === "preview" ? "/app" : "";
 
-/** The Saji API on Railway (docs/openapi.json; Swagger at …/docs). Its routes sit under `/v1`. */
-const API_ORIGIN = process.env.API_PROXY_TARGET || "https://saji-backend-production-0025.up.railway.app/v1";
+/** The Saji API, pay.usesaji.com (docs/openapi.json; Swagger at …/docs). Its routes sit under `/v1`. */
+const API_ORIGIN = process.env.API_PROXY_TARGET || "https://pay.usesaji.com/v1";
 
 /**
  * Where the browser sends API calls: the same-origin `/api/v1` proxy below, so CORS never applies

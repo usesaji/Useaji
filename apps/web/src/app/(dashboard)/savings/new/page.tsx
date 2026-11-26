@@ -22,7 +22,7 @@ export default function NewSavingsGoalPage() {
 						back
 						backHref={pageRoutes.dashboardRoutes.SAVINGS}
 					/>
-					<CreateGoalForm />
+					<CreateGoalForm ownerAddress={account.data.wallet.publicKey} />
 				</>
 			)}
 		</div>

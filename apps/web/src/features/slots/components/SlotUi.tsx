@@ -2,27 +2,28 @@
 
 import { HiCheckCircle, HiXCircle } from "react-icons/hi2";
 import { StatusPill } from "@repo/ui/panel";
-import { Card, ProgressBar } from "@/components/Cards";
+import { Card } from "@/components/Cards";
 import { LinkButton } from "@/components/LinkButton";
-import { contributionsLeft, LISTING_STATUS, perPeriod, personName, TAKEOVER_STATUS } from "@/features/slots/copy";
-import type { SlotCheckDto, SlotListingDto, SlotTakeoverDto, SlotTermsDto } from "@/lib/api/dto";
-import { formatMoney, longDate, shortDate } from "@/lib/format";
+import { checkLabel, contributions, LISTING_STATUS, perPeriod, priceLabel, slotLabel, transferStage } from "@/features/slots/copy";
+import type { EligibilityCheckDto, ListingDto } from "@/lib/api/dto";
+import { formatMoney } from "@/lib/format";
+import { useNow } from "@/lib/use-now";
 
 /** The slot screens' shared pieces (v3 screens 02–07). */
 
-/** Eligibility lines, each marked as holding or not. */
-export function ChecksCard({ title, checks }: { title: string; checks: SlotCheckDto[] }) {
+/** Eligibility lines from the API, each marked as holding or not; a failing one says what the API would answer. */
+export function ChecksCard({ title, checks }: { title: string; checks: EligibilityCheckDto[] }) {
 	return (
 		<Card title={title}>
 			<ul className="space-y-3">
 				{checks.map((c) => (
-					<li key={c.label} className="flex items-start gap-2">
+					<li key={c.key} className="flex items-start gap-2">
 						{c.ok ? (
 							<HiCheckCircle className="mt-px shrink-0 text-base text-success-500" aria-label="Met" />
 						) : (
 							<HiXCircle className="mt-px shrink-0 text-base text-accent" aria-label="Not met" />
 						)}
-						<span className={c.ok ? undefined : "text-accent"}>{c.label}</span>
+						<span className={c.ok ? undefined : "text-accent"}>{checkLabel(c)}</span>
 					</li>
 				))}
 			</ul>
@@ -30,116 +31,69 @@ export function ChecksCard({ title, checks }: { title: string; checks: SlotCheck
 	);
 }
 
-/** "Oct 24, 2025 · 250.00 USDC due · Your payout" — the rounds still to pay. */
-export function ScheduleCard({
-	title,
-	terms,
-	asset = "USDC",
-	payoutNote = "Payout",
-}: {
-	title: string;
-	terms: SlotTermsDto;
-	asset?: string;
-	payoutNote?: string;
-}) {
+/** What the new owner takes over (screens 04 and 05): price, contribution, what's left, the payout. */
+export function TermsCard({ title, listing: l }: { title: string; listing: ListingDto }) {
+	const asset = l.group.asset;
 	return (
 		<Card title={title}>
-			{terms.schedule.length === 0 ? (
-				<p>Nothing left to pay.</p>
-			) : (
-				terms.schedule.map((d) => (
-					<p key={d.round}>
-						{longDate(d.dueAt)} · {formatMoney(d.amount, asset)} due{d.payout ? ` · ${payoutNote}` : ""}
-					</p>
-				))
-			)}
+			<p>Asking price · {priceLabel(l.askingPrice, asset)}</p>
+			<p>Contribution · {perPeriod(l.group)}</p>
+			<p>
+				Still to pay · {contributions(l.roundsToPay)} · {formatMoney(l.remainingObligation, asset)}
+			</p>
+			<p>Payout position · {slotLabel(l.position, l.group.totalRounds)}</p>
+			<p>Expected payout · {formatMoney(l.expectedPayout, asset)} (when every member pays)</p>
 		</Card>
 	);
 }
 
-/** What the new owner takes over (v3 screen 04, right). */
-export function TermsCard({
-	title,
-	terms,
-	slotNumber,
-	totalRounds,
-	asset = "USDC",
-}: {
-	title: string;
-	terms: SlotTermsDto;
-	slotNumber: number;
-	totalRounds: number;
-	asset?: string;
-}) {
-	return (
-		<Card title={title}>
-			<p>Contribution · {perPeriod(terms, asset)}</p>
-			<p>Remaining obligations · {formatMoney(terms.remainingAmount, asset)}</p>
-			<p>
-				Payout position · #{slotNumber} of {totalRounds}
-			</p>
-			<p>
-				Expected payout · {formatMoney(terms.payoutAmount, asset)} on {shortDate(terms.payoutAt)}
-			</p>
-			{terms.lastContributionAt && <p>Last contribution · {longDate(terms.lastContributionAt)}</p>}
-		</Card>
-	);
-}
-
-/** Group approval: "3 of 4 required approvals", who may review and until when, the tally. */
-export function ApprovalCard({ takeover: t }: { takeover: SlotTakeoverDto }) {
-	const notVoted = Math.max(0, t.eligible - t.yes - t.no);
-	return (
-		<Card title="Group approval">
-			<p>
-				{t.yes} of {t.required} required approvals
-			</p>
-			<p>
-				{t.eligible} {t.eligible === 1 ? "member" : "members"} eligible to review
-				{t.status === "voting" ? ` · Ends ${shortDate(t.votingEndsAt)}` : ""}
-			</p>
-			<p className="pb-1">
-				{t.yes} approve · {t.no} reject · {notVoted} {notVoted === 1 ? "has" : "have"} not voted
-			</p>
-			<ProgressBar percent={(t.yes / Math.max(t.required, 1)) * 100} label="Approvals toward the threshold" />
-		</Card>
-	);
-}
-
-export const TakeoverPill = ({ status }: { status: SlotTakeoverDto["status"] }) => (
-	<StatusPill tone={TAKEOVER_STATUS[status].tone}>{TAKEOVER_STATUS[status].label}</StatusPill>
-);
-
-export const ListingPill = ({ status }: { status: SlotListingDto["status"] }) => (
+export const ListingPill = ({ status }: { status: ListingDto["status"] }) => (
 	<StatusPill tone={LISTING_STATUS[status].tone}>{LISTING_STATUS[status].label}</StatusPill>
 );
 
-/** One listing in the marketplace (v3 screen 03). */
-export function ListingCard({ listing: l, href, index = 0 }: { listing: SlotListingDto; href: string; index?: number }) {
+/** Where the transfer stands, or nothing when there's none. */
+export function StagePill({ listing }: { listing: ListingDto }) {
+	const stage = transferStage(listing);
+	return stage ? <StatusPill tone={stage.tone}>{stage.label}</StatusPill> : null;
+}
+
+/** One listing in the marketplace or in "My listings & requests" (v3 screen 03). */
+export function ListingCard({ listing: l, href, index = 0 }: { listing: ListingDto; href: string; index?: number }) {
+	const asset = l.group.asset;
 	return (
 		<section className="animate-rise rounded-[20px] bg-panel p-5" style={{ "--i": index } as React.CSSProperties}>
 			<div className="flex items-start justify-between gap-3">
 				<h3 className="min-w-0 truncate text-base md:text-lg">
-					{l.group.name} · Slot #{l.slotNumber}
+					{l.group.name} · {slotLabel(l.position)}
 				</h3>
-				{(l.mine || l.status !== "open") && <ListingPill status={l.status} />}
+				<span className="flex shrink-0 flex-wrap justify-end gap-1.5">
+					{l.status !== "open" ? <ListingPill status={l.status} /> : <StagePill listing={l} />}
+				</span>
 			</div>
 			<p className="mt-3 text-xs font-light text-ink-muted md:text-sm">
-				{perPeriod(l.terms, l.group.asset)} · {contributionsLeft(l.terms.remainingContributions)}
+				{perPeriod(l.group)} · {contributions(l.roundsToPay)} left · {formatMoney(l.remainingObligation, asset)}
 			</p>
-			<p className="mt-2 text-xs font-light text-ink-muted md:text-sm">
-				Expected payout · {formatMoney(l.terms.payoutAmount, l.group.asset)} · {longDate(l.terms.payoutAt)}
-			</p>
+			<p className="mt-2 text-xs font-light text-ink-muted md:text-sm">Expected payout · {formatMoney(l.expectedPayout, asset)}</p>
+			<p className="mt-2 text-sm md:text-base">Asking price · {priceLabel(l.askingPrice, asset)}</p>
 			<LinkButton href={href} variant="ghost" className="mt-4 w-full text-sm lg:text-base">
-				{l.mine ? "View your listing" : l.status === "open" ? "View slot & request takeover" : "View slot"}
+				{l.mine ? "View your listing" : l.status === "open" && !l.requested && !l.transfer ? "View slot & request takeover" : "View slot"}
 			</LinkButton>
 		</section>
 	);
 }
 
-/** "Amara → Dean" */
-export const Handover = ({ takeover: t, me }: { takeover: SlotTakeoverDto; me?: string | null }) => (
-	<>
-		{personName(t.from, me)} → {personName(t.to, me)}
-	</>
-);
+/** "1:42 left" to the approval's end (to the second while it's short; by the hour otherwise). */
+export function Countdown({ until }: { until: string }) {
+	const now = useNow(1000);
+	if (!now) return null;
+	const left = Math.max(0, new Date(until).getTime() - now);
+	const h = Math.floor(left / 3_600_000);
+	const m = Math.floor((left % 3_600_000) / 60_000);
+	const s = Math.floor((left % 60_000) / 1000);
+	const text = h > 0 ? `${h}h ${m}m left` : `${m}:${String(s).padStart(2, "0")} left`;
+	return (
+		<span aria-live="off" className={left < 10 * 60_000 ? "text-accent" : undefined}>
+			{left === 0 ? "Expired" : text}
+		</span>
+	);
+}

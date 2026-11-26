@@ -10,7 +10,7 @@ import type { MockDb } from "@/mocks/types";
  */
 
 const KEY = "saji-mock-db";
-const VERSION = 4;
+const VERSION = 6;
 
 let memory: MockDb | null = null;
 

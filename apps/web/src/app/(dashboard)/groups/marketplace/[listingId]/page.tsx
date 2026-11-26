@@ -1,7 +1,5 @@
 "use client";
 
-import { useState } from "react";
-import Link from "next/link";
 import { useParams } from "next/navigation";
 import { Button } from "@repo/ui/button";
 import { QueryState } from "@repo/ui/query-state";
@@ -9,71 +7,73 @@ import { Card, TwoColumns } from "@/components/Cards";
 import { LinkButton } from "@/components/LinkButton";
 import { PageHeader } from "@/components/PageHeader";
 import { useAccount } from "@/features/auth/hooks";
-import { personName } from "@/features/slots/copy";
-import { ApprovalCard, ChecksCard, ListingPill, ScheduleCard, TakeoverPill } from "@/features/slots/components/SlotUi";
+import { CLOSED_NOTE, personName, priceLabel, slotLabel } from "@/features/slots/copy";
+import { ChecksCard, Countdown, ListingPill, StagePill, TermsCard } from "@/features/slots/components/SlotUi";
 import {
-	useCancelSlotListing,
+	useAcceptSlot,
+	useListing,
 	useRequestTakeover,
-	useSignTakeover,
-	useSlotListing,
-	useWithdrawTakeover,
+	useSelectBuyer,
+	useWithdrawListing,
+	useWithdrawTakeoverRequest,
 } from "@/features/slots/hooks";
-import type { SlotListingDto, SlotTakeoverDto } from "@/lib/api/dto";
-import { formatMoney, frequencyLabel, longDate, shortDate } from "@/lib/format";
+import { TX_PHASE_LABEL } from "@/features/wallet/transactions";
+import type { ListingDto } from "@/lib/api/dto";
+import { dateTime, formatMoney, longDate } from "@/lib/format";
 import { pageRoutes } from "@/lib/routes";
-import { explorerTxUrl } from "@/lib/stellar/config";
+import { shortAddress } from "@/lib/stellar/config";
 
 const r = pageRoutes.dashboardRoutes;
 
 /**
- * One listed slot. For someone outside the group: Request slot takeover (v3 screen 05) — the
- * obligations, their eligibility, then the request; afterwards, its approval and the signature. For
- * the seller: their listing and where it stands. For a member: a way to the review.
+ * One listed slot (v3 screen 05), for whoever is looking:
+ * - someone outside the group: the terms, their eligibility (the API's checklist), then the request;
+ * - the buyer the seller chose: the group's vote, then Accept within the approval window
+ *   (prepare → wallet → accept), then done;
+ * - the seller: the requests (put one to a vote), where the vote stands, withdraw;
+ * - a member: where the vote stands, and a way to it.
  */
 export default function SlotListingPage() {
 	const { listingId } = useParams<{ listingId: string }>();
-	const listing = useSlotListing(listingId);
+	const listing = useListing(listingId);
 	const { data: account } = useAccount();
 	const l = listing.data;
 	const me = account?.id ?? null;
-	const t = l?.takeover ?? null;
-	const requester = !!t && t.to.userId === me;
+	const chosen = !!l?.transfer && l.transfer.buyer.userId === me;
+	const member = !!l?.transfer && !l.mine && !chosen;
 
 	return (
 		<div className="w-full space-y-6 pb-10">
 			<PageHeader
-				title={l?.mine ? "Your slot listing" : requester ? "Your takeover request" : "Request slot takeover"}
+				title={l?.mine ? "Your slot listing" : chosen ? "Your slot takeover" : "Request slot takeover"}
 				subtitle={
 					l
 						? l.mine
-							? `Offering your position in ${l.group.name} to an eligible member.`
-							: `Review the obligations before joining ${l.group.name}.`
+							? `Offering your position in ${l.group.name}.`
+							: `Review what you'd take over before joining ${l.group.name}.`
 						: undefined
 				}
 				back
-				backHref={l?.mine ? r.MY_LISTINGS : r.MARKETPLACE}
+				backHref={l?.mine || chosen ? r.MY_LISTINGS : r.MARKETPLACE}
 			/>
 			<QueryState isLoading={listing.isLoading} error={listing.error} onRetry={() => void listing.refetch()} />
 			{l && (
 				<TwoColumns
 					main={
 						<>
-							<SlotSummary listing={l} me={me} />
-							<ScheduleCard
-								title="Remaining contribution schedule"
-								terms={l.terms}
-								asset={l.group.asset}
-								payoutNote="Slot payout"
-							/>
+							<Summary listing={l} me={me} />
+							<TermsCard title={l.mine ? "What the buyer takes over" : "What you'd take over"} listing={l} />
 						</>
 					}
 					side={
 						l.mine ? (
 							<SellerSide listing={l} me={me} />
-						) : t && requester ? (
-							<RequesterSide takeover={t} />
+						) : chosen ? (
+							<ChosenBuyerSide listing={l} wallet={account?.wallet?.publicKey ?? null} />
+						) : member ? (
+							<MemberSide listing={l} me={me} />
 						) : (
-							<RequestSide listing={l} me={me} />
+							<RequestSide listing={l} walletLinked={!!account?.wallet} />
 						)
 					}
 				/>
@@ -82,224 +82,253 @@ export default function SlotListingPage() {
 	);
 }
 
-function SlotSummary({ listing: l, me }: { listing: SlotListingDto; me: string | null }) {
+function Summary({ listing: l, me }: { listing: ListingDto; me: string | null }) {
 	return (
 		<section className="rounded-[20px] bg-panel p-5">
 			<div className="flex items-start justify-between gap-3">
 				<h3 className="min-w-0 text-base md:text-lg">
-					{l.group.name} · Slot #{l.slotNumber} of {l.group.totalRounds}
+					{l.group.name} · {slotLabel(l.position, l.group.totalRounds)}
 				</h3>
-				<ListingPill status={l.status} />
+				<span className="flex shrink-0 flex-wrap justify-end gap-1.5">
+					<ListingPill status={l.status} />
+					{l.status === "open" && <StagePill listing={l} />}
+				</span>
 			</div>
 			<div className="mt-3 space-y-3 text-xs font-light text-ink-muted md:text-sm">
 				<p>
-					Listed by {personName(l.seller, me)} · Expires {shortDate(l.expiresAt)}
+					Listed by {personName(l.seller, me)} on {longDate(l.createdAt)}
 				</p>
 				<p>
-					{formatMoney(l.terms.contributionAmount, l.group.asset)}{" "}
-					{frequencyLabel(l.terms.frequency, l.terms.customIntervalDays).toLowerCase()} ·{" "}
-					{formatMoney(l.terms.remainingAmount, l.group.asset)} remaining
+					Round {l.group.currentRound + 1} of {l.group.totalRounds} is open · due {dateTime(l.group.roundDeadline)}
 				</p>
-				<p>
-					Payout · {formatMoney(l.terms.payoutAmount, l.group.asset)} on {longDate(l.terms.payoutAt)}
-				</p>
-				{l.reason && <p>“{l.reason}”</p>}
 			</div>
+			<p className="mt-4 text-[28px] leading-none font-medium tracking-tight md:text-[34px]">{priceLabel(l.askingPrice, l.group.asset)}</p>
+			<p className="mt-1 text-xs font-light text-ink-muted">Asking price</p>
 		</section>
 	);
 }
 
-/** Someone outside the group, before asking (or when the slot isn't open). */
-function RequestSide({ listing: l, me }: { listing: SlotListingDto; me: string | null }) {
-	const request = useRequestTakeover();
-	const { data: account } = useAccount();
-	const [accepted, setAccepted] = useState(false);
-	const checks = l.eligibility?.checks ?? [];
-	const t = l.takeover;
-	// A member of the group sees the request under review (they may be one of the reviewers).
-	if (t) {
+/** A closed listing, for anyone. */
+function Closed({ listing: l, me }: { listing: ListingDto; me: string | null }) {
+	if (l.status === "sold") {
+		const toMe = l.transfer?.buyer.userId === me;
 		return (
 			<>
-				<Card title="A takeover is under review">
-					<p className="flex flex-wrap items-center gap-2">
-						{personName(t.from, me)} → {personName(t.to, me)} <TakeoverPill status={t.status} />
+				<Card title="Transfer completed">
+					<p className="animate-pop">
+						{toMe ? "The slot is yours." : `${personName(l.transfer?.buyer ?? l.seller, me)} took over this slot.`} The schedule entry moved
+						and the earlier contributions stay on record.
 					</p>
 				</Card>
-				<LinkButton href={r.TAKEOVER(l.group.id, t.id)} className="w-full text-sm lg:text-base">
-					{t.canVote ? "Review takeover" : "View takeover"}
-				</LinkButton>
+				{(toMe || l.mine) && (
+					<LinkButton href={toMe ? r.CIRCLE(l.group.id) : r.MY_LISTINGS} className="w-full text-sm lg:text-base">
+						{toMe ? `Go to ${l.group.name}` : "My listings"}
+					</LinkButton>
+				)}
 			</>
 		);
 	}
-	const walletMissing = !!account && !account.wallet;
+	return (
+		<Card title={l.status === "withdrawn" ? "Listing withdrawn" : "Listing closed"}>
+			<p>{l.status === "withdrawn" ? "The seller took this slot off the marketplace." : CLOSED_NOTE}</p>
+		</Card>
+	);
+}
+
+/** The transfer under way: buyer, stage, the vote. */
+function TransferCard({ listing: l, me }: { listing: ListingDto; me: string | null }) {
+	const t = l.transfer!;
+	return (
+		<Card tone="lilac" title="Transfer to the group's vote">
+			<p className="flex flex-wrap items-center gap-2">
+				{personName(l.seller, me)} → {personName(t.buyer, me)} <StagePill listing={l} />
+			</p>
+			{t.approval && t.approval.acceptable && (
+				<p>
+					The buyer can accept until {dateTime(t.approval.expiresAt)} · <Countdown until={t.approval.expiresAt} />
+				</p>
+			)}
+		</Card>
+	);
+}
+
+function SellerSide({ listing: l, me }: { listing: ListingDto; me: string | null }) {
+	const select = useSelectBuyer(l);
+	const withdraw = useWithdrawListing(l.group.id);
+	if (l.status !== "open") return <Closed listing={l} me={me} />;
+	const t = l.transfer;
+	const busy = !!t && (t.proposalStatus === "active" || t.proposalStatus === "approved" || !!t.approval?.acceptable);
+	const requests = l.requests ?? [];
 	return (
 		<>
-			<ChecksCard title="Your eligibility" checks={checks} />
-			{walletMissing && (
-				<LinkButton href={r.WALLET} variant="ghost" className="w-full text-sm lg:text-base">
-					Connect your wallet
+			{t && <TransferCard listing={l} me={me} />}
+			{t && (
+				<LinkButton href={r.PROPOSAL(l.group.id, t.proposalId)} variant="ghost" className="w-full text-sm lg:text-base">
+					View the vote
 				</LinkButton>
 			)}
-			<Card tone="lilac" title="What happens next">
-				<p>
-					{l.approval.required} of {l.approval.eligible} eligible members must approve. You will sign the Soroban transfer once
-					approved. The current owner stays responsible until confirmation.
-				</p>
+			<Card title={requests.length ? `Requests · ${requests.length}` : "Requests"}>
+				{requests.length === 0 ? (
+					<p>{t ? "No other requests." : "No one has asked yet. You'll get a notification when someone does."}</p>
+				) : (
+					<ul className="space-y-3">
+						{requests.map((q) => (
+							<li key={q.buyer.userId} className="flex flex-wrap items-center justify-between gap-2">
+								<span>
+									{personName(q.buyer, me)} · asked {longDate(q.requestedAt)}
+								</span>
+								<Button
+									size="sm"
+									variant="ghost"
+									onClick={() => select.mutate(q.buyer.userId)}
+									isLoading={select.isPending && select.variables === q.buyer.userId}
+									disabled={busy || select.isPending}
+								>
+									Put to a vote
+								</Button>
+							</li>
+						))}
+					</ul>
+				)}
+				{busy && requests.length > 0 && <p>You can choose someone else once this vote ends or the approval runs out.</p>}
 			</Card>
-			{l.status === "open" ? (
+			<Card title="How it works">
+				<p>Choose a buyer and every other member votes. Once they approve, the buyer accepts: they pay you the asking price and take your place.</p>
+			</Card>
+			<Button
+				variant="soft"
+				className="w-full text-sm lg:text-base"
+				onClick={() => withdraw.mutate()}
+				isLoading={withdraw.isPending}
+				disabled={withdraw.isPending}
+			>
+				Withdraw listing
+			</Button>
+		</>
+	);
+}
+
+/** The buyer the seller put to the vote: wait for it, then accept within the window. */
+function ChosenBuyerSide({ listing: l, wallet }: { listing: ListingDto; wallet: string | null }) {
+	const accept = useAcceptSlot(l);
+	const t = l.transfer!;
+	if (l.status !== "open") return <Closed listing={l} me={t.buyer.userId} />;
+	const ready = t.proposalStatus === "executed" && !!t.approval?.acceptable;
+
+	if (!ready) {
+		const note =
+			t.proposalStatus === "active"
+				? "The seller chose you. The group's members are voting now; you'll get a notification when it's decided."
+				: t.proposalStatus === "approved"
+					? "The group approved. It's being carried out; Accept opens in a moment."
+					: t.proposalStatus === "executed"
+						? "The approval ran out before you accepted. Ask the seller to put you to a vote again."
+						: t.proposalStatus === "rejected"
+							? "The group didn't approve this transfer."
+							: "The vote ended without a decision.";
+		return (
+			<>
+				<TransferCard listing={l} me={t.buyer.userId} />
+				<Card>
+					<p>{note}</p>
+				</Card>
+			</>
+		);
+	}
+
+	return (
+		<>
+			<Card tone="lilac" title="Approved · accept the slot">
+				<p>
+					Accept until {dateTime(t.approval!.expiresAt)} · <Countdown until={t.approval!.expiresAt} />
+				</p>
+				<p>You pay · {priceLabel(l.askingPrice, l.group.asset)}, to the seller</p>
+				<p>From · {wallet ? shortAddress(wallet) : "your linked wallet"}</p>
+				<p>Then you join at {slotLabel(l.position)} and pay the rounds left: {formatMoney(l.remainingObligation, l.group.asset)}.</p>
+			</Card>
+			<Card title="Transaction status">
+				<p className={accept.isPending ? "text-primary" : undefined} aria-live="polite">
+					{TX_PHASE_LABEL[accept.phase]}
+				</p>
+				<p>Steps · Prepare → Sign in wallet → Confirm on Stellar</p>
+				<p>Saji co-signs it for about 2 minutes, so your wallet opens right away. If it lapses, accept again.</p>
+			</Card>
+			{wallet ? (
+				<Button
+					className="w-full text-sm lg:text-base"
+					onClick={() => accept.mutate(wallet)}
+					isLoading={accept.isPending && accept.phase !== "wallet"}
+					disabled={accept.isPending}
+				>
+					{accept.phase === "wallet" ? "Check your wallet…" : `Accept & pay ${priceLabel(l.askingPrice, l.group.asset)}`}
+				</Button>
+			) : (
+				<LinkButton href={r.WALLET} className="w-full text-sm lg:text-base">
+					Link your wallet to accept
+				</LinkButton>
+			)}
+		</>
+	);
+}
+
+/** A member of the group (they may be one of the voters). */
+function MemberSide({ listing: l, me }: { listing: ListingDto; me: string | null }) {
+	if (l.status !== "open") return <Closed listing={l} me={me} />;
+	return (
+		<>
+			<TransferCard listing={l} me={me} />
+			<LinkButton href={r.PROPOSAL(l.group.id, l.transfer!.proposalId)} className="w-full text-sm lg:text-base">
+				{l.transfer!.proposalStatus === "active" ? "Review & vote" : "View the vote"}
+			</LinkButton>
+		</>
+	);
+}
+
+/** Someone outside the group: eligibility, then the request. */
+function RequestSide({ listing: l, walletLinked }: { listing: ListingDto; walletLinked: boolean }) {
+	const request = useRequestTakeover(l);
+	const withdraw = useWithdrawTakeoverRequest(l);
+	if (l.status !== "open") return <Closed listing={l} me={null} />;
+	const e = l.buyerEligibility;
+	// Asking again is harmless, so "already asked" doesn't block anything here.
+	const blocking = (e?.checks ?? []).filter((c) => !c.ok && c.key !== "notRequested");
+	return (
+		<>
+			{e && <ChecksCard title="Your eligibility" checks={e.checks} />}
+			{l.requested ? (
 				<>
-					<label className="flex items-center gap-3 text-xs md:text-sm">
-						<input
-							type="checkbox"
-							checked={accepted}
-							onChange={(e) => setAccepted(e.target.checked)}
-							className="size-4 accent-primary"
-						/>
-						I accept all remaining contributions.
-					</label>
+					<Card title="Request sent">
+						<p>The seller chooses who goes to the group&apos;s vote. You&apos;ll get a notification if it&apos;s you.</p>
+					</Card>
 					<Button
+						variant="soft"
 						className="w-full text-sm lg:text-base"
-						disabled={!accepted || !l.eligibility?.canRequest}
-						isLoading={request.isPending}
-						onClick={() => request.mutate(l.id)}
+						onClick={() => withdraw.mutate()}
+						isLoading={withdraw.isPending}
+						disabled={withdraw.isPending}
 					>
-						Submit takeover request
+						Withdraw request
 					</Button>
 				</>
 			) : (
-				<Card>
-					<p>This slot isn&apos;t open for requests right now.</p>
-				</Card>
-			)}
-		</>
-	);
-}
-
-/** The person who asked: approval progress, then the signature, then the result. */
-function RequesterSide({ takeover: t }: { takeover: SlotTakeoverDto }) {
-	const sign = useSignTakeover();
-	const withdraw = useWithdrawTakeover();
-	return (
-		<>
-			<Card title="Your request">
-				<p className="flex flex-wrap items-center gap-2">
-					Requested {longDate(t.requestedAt)} <TakeoverPill status={t.status} />
-				</p>
-			</Card>
-			{t.status === "voting" && (
 				<>
-					<ApprovalCard takeover={t} />
-					<Card tone="lilac" title="What happens next">
-						<p>
-							Once {t.required} members approve, you sign the Soroban transfer. The current owner stays responsible until then.
-						</p>
-					</Card>
-				</>
-			)}
-			{t.status === "approved" && (
-				<Card tone="lilac" title="Approved: sign the transfer">
-					<p>
-						The group approved your takeover. Sign with your wallet by {longDate(t.signBy)} to take over slot #{t.slotNumber}. Its
-						contribution and payout records stay with the slot.
-					</p>
-				</Card>
-			)}
-			{t.status === "transferred" && (
-				<Card tone="lilac" title="The slot is yours">
-					<p>
-						Transferred on {longDate(t.transferredAt)}. You now contribute{" "}
-						{formatMoney(t.terms.contributionAmount, t.group.asset)} each round and collect round {t.slotNumber}.
-					</p>
-					{t.txHash && (
-						<a href={explorerTxUrl(t.txHash)} target="_blank" rel="noopener noreferrer" className="inline-block text-primary">
-							View transaction on explorer →
-						</a>
+					{!walletLinked && (
+						<LinkButton href={r.WALLET} variant="ghost" className="w-full text-sm lg:text-base">
+							Link your wallet
+						</LinkButton>
 					)}
-				</Card>
-			)}
-			{t.canSign && (
-				<Button
-					className="w-full text-sm lg:text-base"
-					onClick={() => sign.mutate(t)}
-					isLoading={sign.isPending && sign.phase === "submitting"}
-					disabled={sign.isPending}
-				>
-					{sign.phase === "wallet" ? "Check your wallet…" : "Sign transfer in wallet"}
-				</Button>
-			)}
-			{t.status === "transferred" && (
-				<LinkButton href={r.CIRCLE(t.group.id)} className="w-full text-sm lg:text-base">
-					Open {t.group.name}
-				</LinkButton>
-			)}
-			{t.canWithdraw && (
-				<Button
-					variant="soft"
-					className="w-full text-sm lg:text-base"
-					onClick={() => withdraw.mutate(t.id)}
-					isLoading={withdraw.isPending}
-				>
-					Withdraw request
-				</Button>
-			)}
-		</>
-	);
-}
-
-/** The slot's owner: where the listing stands. */
-function SellerSide({ listing: l, me }: { listing: SlotListingDto; me: string | null }) {
-	const cancel = useCancelSlotListing();
-	const t = l.takeover;
-	return (
-		<>
-			{!t && l.status === "open" && (
-				<Card tone="lilac" title="Waiting for requests">
-					<p>
-						Eligible people can request your slot until {longDate(l.expiresAt)}. You stay responsible for your contributions until
-						a transfer is confirmed.
-					</p>
-				</Card>
-			)}
-			{t && (
-				<>
-					<Card title={`${personName(t.to, me)} asked to take over`}>
-						<p className="flex flex-wrap items-center gap-2">
-							Requested {longDate(t.requestedAt)} <TakeoverPill status={t.status} />
-						</p>
-						{t.status === "approved" && <p>Waiting for {personName(t.to, me)} to sign the transfer.</p>}
-						{t.status === "transferred" && (
-							<p>Transferred on {longDate(t.transferredAt)}. Your contribution history stays with the slot.</p>
-						)}
-					</Card>
-					{t.status === "voting" && <ApprovalCard takeover={t} />}
-					<LinkButton
-						href={t.status === "transferred" ? r.MARKETPLACE : r.TAKEOVER(l.group.id, t.id)}
-						variant="soft"
+					<Button
 						className="w-full text-sm lg:text-base"
+						onClick={() => request.mutate()}
+						isLoading={request.isPending}
+						disabled={request.isPending || blocking.length > 0}
 					>
-						{t.status === "transferred" ? "Back to the marketplace" : "View takeover"}
-					</LinkButton>
+						Request slot takeover
+					</Button>
+					<p className="text-center text-xs font-light text-ink-muted">
+						Nothing is paid now. If you&apos;re approved, you pay {priceLabel(l.askingPrice, l.group.asset)} when you accept.
+					</p>
 				</>
-			)}
-			{!t && l.status !== "open" && (
-				<Card>
-					<p>This listing is {l.status}. Your slot stays yours.</p>
-				</Card>
-			)}
-			{l.status === "open" && (
-				<Button
-					variant="soft"
-					className="w-full text-sm lg:text-base"
-					onClick={() => cancel.mutate(l.id)}
-					isLoading={cancel.isPending}
-				>
-					Cancel listing
-				</Button>
-			)}
-			{l.status !== "transferred" && (
-				<Link href={r.CIRCLE(l.group.id)} className="block text-center text-xs text-primary md:text-sm">
-					Back to {l.group.name}
-				</Link>
 			)}
 		</>
 	);

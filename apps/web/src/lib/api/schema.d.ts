@@ -1111,6 +1111,431 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/groups/{id}/slots/listings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * List my slot for takeover
+         * @description The group must be active, public and not paused; the slot's payout must still be ahead; the seller must have no unresolved missed contribution. One open listing per member per group.
+         */
+        post: operations["SlotsController_list_v1"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/groups/{id}/slots/eligibility": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Can I list my slot?
+         * @description The checklist for listing in this group, from the same rules `POST .../slots/listings` enforces. Each failed check carries the message the API would answer with.
+         */
+        get: operations["SlotsController_eligibility_v1"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/groups/{id}/slots/listings/mine": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Withdraw my listing
+         * @description Closes the listing and drops its takeover requests. An approved buyer can no longer accept it.
+         */
+        delete: operations["SlotsController_withdraw_v1"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/groups/{id}/slots/transfers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Slot transfer history
+         * @description Members only. Newest first.
+         */
+        get: operations["SlotsController_history_v1"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/slots/marketplace": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Browse the slot marketplace
+         * @description Open listings in active public groups, newest first. Filter with `search` (group name), `minPrice` and `maxPrice` (asking price, inclusive). Each listing has `buyerEligibility` for you.
+         */
+        get: operations["SlotsController_marketplace_v1"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/slots/listings/mine": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * My listings and requests
+         * @description Listings you created (`selling`) and listings you requested, were chosen for, or bought (`buying`), in any status, newest first, up to 100 each.
+         */
+        get: operations["SlotsController_mine_v1"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/slots/listings/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get a listing
+         * @description Public groups: anyone. The seller also sees takeover requests; the seller, the chosen buyer and members see the transfer vote and approval.
+         */
+        get: operations["SlotsController_detail_v1"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/slots/listings/{id}/takeover-requests": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Request a takeover
+         * @description The buyer must have a linked wallet, not be a member of (or banned from) the group, hold no slot in it, and have no unresolved missed contribution in any group. Repeating a pending request is a no-op.
+         */
+        post: operations["SlotsController_request_v1"];
+        /** Withdraw my takeover request */
+        delete: operations["SlotsController_withdrawRequest_v1"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/slots/listings/{id}/takeover-requests/{buyerId}/select": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Choose a buyer and put the transfer to a vote
+         * @description Seller only. Opens a `slot_transfer` proposal; every member except the seller votes, under the group's approval rules. Once it passes, the buyer can accept until the earlier of the execution window and the round deadline.
+         */
+        post: operations["SlotsController_select_v1"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/slots/listings/{id}/accept/prepare": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Prepare the acceptance for my wallet to sign
+         * @description Chosen buyer only, while the approval is unexpired. Re-checks the group, the slot and both parties, then returns a `transfer_slot` call on the slot registry already co-signed by SAJI; the co-signature lasts about two minutes, so sign and send it promptly. Signing it pays the asking price to the seller and moves the slot. Simulated mode: 409, accept directly.
+         */
+        post: operations["SlotsController_prepareAccept_v1"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/slots/listings/{id}/accept": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Accept the takeover
+         * @description On Stellar, send the signed transaction (`signedXdr`) or the hash of one you submitted (`txHash`); the API checks the slot registry moved the slot to your wallet, then records the transfer. Past contributions and payouts keep the seller's name. Simulated mode needs no body.
+         */
+        post: operations["SlotsController_accept_v1"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/savings/plans": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List my savings goals
+         * @description Newest first, with balance and progress. `movements` is null here.
+         */
+        get: operations["SavingsController_list_v1"];
+        put?: never;
+        /**
+         * Create a savings goal
+         * @description On Stellar returns `planId` and an unsigned `create_plan` transaction for your linked wallet, which becomes the plan owner; sign it and call `POST /savings/plans/{planId}/confirm`. Simulated mode creates the plan at once (`plan`).
+         */
+        post: operations["SavingsController_create_v1"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/savings/plans/{id}/confirm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Confirm a goal created on Stellar
+         * @description Send the signed `create_plan` transaction or its hash. Repeating it returns the same plan.
+         */
+        post: operations["SavingsController_confirm_v1"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/savings/plans/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get a savings goal
+         * @description With its last 100 deposits and withdrawals, newest first.
+         */
+        get: operations["SavingsController_detail_v1"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/savings/plans/{id}/deposits/prepare": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Prepare a deposit
+         * @description Unsigned `deposit` call moving USDC from the owner wallet into the plan.
+         */
+        post: operations["SavingsController_prepareDeposit_v1"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/savings/plans/{id}/deposits": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Record a deposit
+         * @description On Stellar: call the matching `/prepare` endpoint, sign the returned XDR with the plan owner's wallet, then send `signedXdr` (or `txHash` if you submitted it). The API reads the amount and balance from the contract event. Simulated mode: send `amount`.
+         */
+        post: operations["SavingsController_deposit_v1"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/savings/plans/{id}/withdrawals/prepare": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Prepare a withdrawal
+         * @description Refused with 409 while the plan is locked (date not reached and/or target not met) or when the amount is above the balance. The contract enforces the same rule.
+         */
+        post: operations["SavingsController_prepareWithdrawal_v1"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/savings/plans/{id}/withdrawals": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Record a withdrawal
+         * @description On Stellar: call the matching `/prepare` endpoint, sign the returned XDR with the plan owner's wallet, then send `signedXdr` (or `txHash` if you submitted it). The API reads the amount and balance from the contract event. Simulated mode: send `amount`; locked plans are refused with 409.
+         */
+        post: operations["SavingsController_withdraw_v1"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/savings/overview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get my savings dashboard
+         * @description Group savings and personal plans together, for the Savings dashboard screen.
+         */
+        get: operations["DashboardController_overview_v1"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/faucet/trustline/prepare": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Prepare a USDC trustline for my wallet
+         * @description Testnet only. Unsigned `change_trust` for your linked wallet; sign and submit it with your wallet. 404 when the faucet is off.
+         */
+        post: operations["FaucetController_trustline_v1"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/faucet/usdc": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Get test USDC
+         * @description Testnet only. Sends 1000 test USDC to your linked wallet, which must already trust USDC. Once an hour per wallet, with a global hourly cap. 404 when the faucet is off.
+         */
+        post: operations["FaucetController_fund_v1"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/notifications": {
         parameters: {
             query?: never;
@@ -1783,6 +2208,11 @@ export interface components {
             paid: boolean;
             /** @description Paid after the deadline, within grace. */
             late: boolean;
+            /**
+             * @description The member took this slot over after its previous holder paid this
+             *     round; `paid`, `amount` and `paidAt` describe that earlier payment.
+             */
+            coveredByPreviousHolder: boolean;
         };
         ScheduleSlotDto: {
             round: number;
@@ -1815,7 +2245,7 @@ export interface components {
             graceEndsAt: string | null;
             paused: components["schemas"]["PauseDto"] | null;
             openDefaults: components["schemas"]["DefaultDto"][];
-            /** @description Every member who owes this round, the recipient included. */
+            /** @description One row per slot owed this round, the recipient included (see `coveredByPreviousHolder`). */
             contributions: components["schemas"]["RoundContributionDto"][];
             schedule: components["schemas"]["ScheduleSlotDto"][];
             recipient: components["schemas"]["MemberPreviewDto"] | null;
@@ -1879,6 +2309,15 @@ export interface components {
             /** Format: date-time */
             graceUntil: string | null;
         };
+        SlotTransferDetailDto: {
+            listingId: string;
+            seller: components["schemas"]["MemberPreviewDto"];
+            /** @description 0-based payout round of the slot when listed. */
+            position: number;
+            buyer: components["schemas"]["MemberPreviewDto"];
+            /** @description What the buyer pays the seller when accepting. */
+            price: string;
+        };
         ThresholdDto: {
             /** @enum {string} */
             kind: "percent" | "count";
@@ -1886,7 +2325,7 @@ export interface components {
         };
         ProposalDto: {
             /** @enum {string} */
-            type: "pause" | "resume" | "update_schedule" | "recovery";
+            type: "pause" | "resume" | "update_schedule" | "recovery" | "slot_transfer";
             /** @enum {string} */
             status: "active" | "approved" | "rejected" | "expired" | "executed";
             /** @enum {string|null} */
@@ -1902,6 +2341,8 @@ export interface components {
             creationTxUrl: string | null;
             scheduleChange: components["schemas"]["ScheduleChangeDto"] | null;
             recovery: components["schemas"]["RecoveryDetailDto"] | null;
+            /** @description Set for `slot_transfer` proposals. */
+            slotTransfer: components["schemas"]["SlotTransferDetailDto"] | null;
             id: string;
             /** @description Per-group sequence, also the on-chain proposal id. */
             number: number;
@@ -1944,7 +2385,7 @@ export interface components {
         };
         GroupEventDto: {
             /** @enum {string} */
-            kind: "group_started" | "contribution_made" | "payout_made" | "group_completed" | "default_recorded" | "recovery_started" | "default_resolved" | "recovery_resolved" | "proposal_created" | "vote_cast" | "proposal_approved" | "proposal_rejected" | "proposal_expired" | "proposal_executed" | "group_paused" | "group_resumed" | "schedule_updated" | "member_removed";
+            kind: "group_started" | "contribution_made" | "payout_made" | "group_completed" | "default_recorded" | "recovery_started" | "default_resolved" | "recovery_resolved" | "proposal_created" | "vote_cast" | "proposal_approved" | "proposal_rejected" | "proposal_expired" | "proposal_executed" | "group_paused" | "group_resumed" | "schedule_updated" | "member_removed" | "slot_listed" | "slot_listing_closed" | "slot_takeover_requested" | "slot_transferred";
             actor: components["schemas"]["MemberPreviewDto"] | null;
             /** @description Keys by `kind` (rounds are 0-based, amounts decimal strings, ids UUIDs): `group_started`: rounds, schedule (user ids, payout order), firstDeadline. `contribution_made`: round, amount, late. `payout_made`: round, recipientId, amount. `group_completed`: rounds. `default_recorded`: round, userId, defaultId, amount. `recovery_started`, `recovery_resolved`: round. `default_resolved`: defaultId, resolution (`settled` | `written_off` | `member_removed`); round when settled; proposalId when decided by vote. `proposal_created`, `proposal_executed`: proposalId, number, type. `vote_cast`: proposalId, number, choice, yes, no. `proposal_approved`, `proposal_rejected`: proposalId, number, yes, no, required; reason `electorate changed` when a removal decided it. `proposal_expired`: proposalId, reason. `group_paused`: proposalId. `group_resumed`: proposalId, newDeadline. `schedule_updated`: proposalId, fromRound, recipients. `member_removed`: userId, proposalId. Events recorded before a key was added may lack it. */
             data: {
@@ -1969,9 +2410,11 @@ export interface components {
         };
         ActivityItemDto: {
             /** @enum {string} */
-            kind: "contribution" | "payout" | "withdrawal";
-            /** @description Null for withdrawals. */
+            kind: "contribution" | "payout" | "withdrawal" | "savings_deposit" | "savings_withdrawal" | "slot_purchase" | "slot_sale";
+            /** @description Set for contributions, payouts and slot purchases/sales. */
             group: components["schemas"]["ActivityGroupDto"] | null;
+            /** @description Set for savings deposits and withdrawals. */
+            plan: components["schemas"]["ActivityGroupDto"] | null;
             /** @description Explorer link; null until `txHash` is a confirmed Stellar hash. */
             txUrl: string | null;
             id: string;
@@ -1990,6 +2433,14 @@ export interface components {
             contributions: string;
             payouts: string;
             withdrawals: string;
+            /** @description Into personal savings plans. */
+            savingsDeposits: string;
+            /** @description Out of personal savings plans. */
+            savingsWithdrawals: string;
+            /** @description Asking prices you paid for slots you took over. */
+            slotPurchases: string;
+            /** @description Asking prices you received for slots you sold. */
+            slotSales: string;
         };
         StatementDto: {
             /** @example 2026-01-01 */
@@ -2006,9 +2457,239 @@ export interface components {
             /** @description True when the period has more than 10,000 rows; narrow the dates. */
             truncated: boolean;
         };
+        TakeoverRequestDto: {
+            buyer: components["schemas"]["MemberPreviewDto"];
+            /** Format: date-time */
+            requestedAt: string;
+        };
+        ListingApprovalDto: {
+            /**
+             * Format: date-time
+             * @description The buyer can accept until then.
+             */
+            expiresAt: string;
+            /** @description The listing is still open and the approval has not expired: the buyer can accept now. */
+            acceptable: boolean;
+        };
+        ListingTransferDto: {
+            /** @enum {string} */
+            proposalStatus: "active" | "approved" | "rejected" | "expired" | "executed";
+            approval: components["schemas"]["ListingApprovalDto"] | null;
+            proposalId: string;
+            buyer: components["schemas"]["MemberPreviewDto"];
+        };
+        EligibilityCheckDto: {
+            /**
+             * @description Seller: `member`, `groupActive`, `groupPublic`, `notPaused`, `holdsSlot`,
+             *     `payoutAhead`, `noMissedContribution`. Buyer: `notSeller`, `notBanned`,
+             *     `notMember`, `noSlotInGroup`, `walletLinked`, `noMissedContributions`.
+             */
+            key: string;
+            ok: boolean;
+            /** @description What the API answers when this check fails. */
+            message: string;
+        };
+        EligibilityDto: {
+            checks: components["schemas"]["EligibilityCheckDto"][];
+            /** @description Every check passes, so the action will not be refused for these rules. */
+            eligible: boolean;
+        };
+        ListingGroupDto: {
+            /** @enum {string} */
+            frequency: "daily" | "weekly" | "biweekly" | "monthly" | "custom";
+            id: string;
+            name: string;
+            /** @description Per round, in `asset`. */
+            contributionAmount: string;
+            asset: string;
+            /** @description Slots in the schedule, which is also the number of rounds. */
+            totalRounds: number;
+            /** @description 0-based round now open. */
+            currentRound: number;
+            /**
+             * Format: date-time
+             * @description When the current round's contributions are due.
+             */
+            roundDeadline: string;
+        };
+        ListingDto: {
+            /** @enum {string} */
+            status: "open" | "sold" | "withdrawn" | "invalidated";
+            /** @description Pending requests; only for the seller. */
+            requests: components["schemas"]["TakeoverRequestDto"][] | null;
+            /** @description The transfer the seller chose to put to a vote, if any; visible to the seller, the chosen buyer and members. */
+            transfer: components["schemas"]["ListingTransferDto"] | null;
+            /** @description Whether you could request a takeover now; null for the seller and for closed listings. */
+            buyerEligibility: components["schemas"]["EligibilityDto"] | null;
+            id: string;
+            group: components["schemas"]["ListingGroupDto"];
+            seller: components["schemas"]["MemberPreviewDto"];
+            /** @description 0-based payout round of the slot. */
+            position: number;
+            askingPrice: string;
+            /** @description Rounds the buyer would still pay for (the current one is skipped when the seller already paid it). */
+            roundsToPay: number;
+            /** @description `roundsToPay` × contribution. */
+            remainingObligation: string;
+            /** @description Contribution × rounds: the payout when every member pays. */
+            expectedPayout: string;
+            /** Format: date-time */
+            createdAt: string;
+            /** @description You are the seller. */
+            mine: boolean;
+            /** @description You have a pending takeover request on it. */
+            requested: boolean;
+        };
+        CreateListingDto: {
+            /** @description What a buyer pays you when the takeover completes. `"0"` gives the slot away. */
+            askingPrice: string;
+        };
+        SellerEligibilityDto: {
+            checks: components["schemas"]["EligibilityCheckDto"][];
+            /** @description 0-based payout round of your slot; null when you hold none. */
+            position: number | null;
+            /** @description Every check passes, so the action will not be refused for these rules. */
+            eligible: boolean;
+        };
+        SlotPayoutDto: {
+            txUrl: string | null;
+            round: number;
+            recipient: components["schemas"]["MemberPreviewDto"];
+            amount: string;
+            /** Format: date-time */
+            paidAt: string;
+        };
+        SlotPaidDto: {
+            rounds: number;
+            amount: string;
+        };
+        SlotTransferDto: {
+            txHash: string | null;
+            txUrl: string | null;
+            /** @description The slot's payout, once its round paid out (to whoever held it then). */
+            payout: components["schemas"]["SlotPayoutDto"] | null;
+            id: string;
+            from: components["schemas"]["MemberPreviewDto"];
+            to: components["schemas"]["MemberPreviewDto"];
+            /** @description 0-based payout round of the slot when it moved. */
+            position: number;
+            price: string;
+            /** @description Round open when it moved. */
+            effectiveRound: number;
+            /** Format: date-time */
+            transferredAt: string;
+            /** @description What the seller had paid into the group before selling. */
+            paidBySeller: components["schemas"]["SlotPaidDto"];
+        };
+        MyListingsDto: {
+            /** @description Listings you created, any status, newest first. */
+            selling: components["schemas"]["ListingDto"][];
+            /** @description Listings you requested, were chosen for, or bought, any status, newest first. */
+            buying: components["schemas"]["ListingDto"][];
+        };
+        PreparedTransactionDto: {
+            /** @description Unsigned transaction (base64 XDR) for the wallet to sign. */
+            xdr: string;
+        };
+        AcceptTransferDto: {
+            signedXdr?: string;
+            txHash?: string;
+        };
+        MovementDto: {
+            /** @enum {string} */
+            kind: "deposit" | "withdrawal";
+            txHash: string | null;
+            txUrl: string | null;
+            id: string;
+            amount: string;
+            balanceAfter: string;
+            /** Format: date-time */
+            createdAt: string;
+        };
+        PlanDto: {
+            /** @enum {string} */
+            lock: "flexible" | "until_date" | "until_target" | "until_date_or_target";
+            /** Format: date-time */
+            unlockAt: string | null;
+            /** @description Wallet that owns the plan on Stellar and must sign its movements; null in simulated mode. */
+            ownerAddress: string | null;
+            txHash: string | null;
+            txUrl: string | null;
+            /** @description Newest first; only on the detail endpoint. */
+            movements: components["schemas"]["MovementDto"][] | null;
+            id: string;
+            name: string;
+            target: string;
+            asset: string;
+            balance: string;
+            /** @description Balance as a share of the target, 0 to 100 (capped), two decimals. */
+            progressPercent: number;
+            /** @description The lock allows a withdrawal now (and the balance is above 0). */
+            canWithdraw: boolean;
+            /** Format: date-time */
+            createdAt: string;
+        };
+        PreparedPlanDto: {
+            /** @description Sign this, then call `POST /savings/plans/{planId}/confirm`. Null in simulated mode. */
+            xdr: string | null;
+            /** @description Simulated mode: the plan, already created. */
+            plan: components["schemas"]["PlanDto"] | null;
+            /** @description Id of the plan the transaction creates. */
+            planId: string;
+        };
+        CreatePlanDto: {
+            /**
+             * @description `flexible`: withdraw any time. `until_date`: from `unlockAt`.
+             *     `until_target`: while the balance is at least the target.
+             *     `until_date_or_target`: whichever comes first.
+             * @enum {string}
+             */
+            lock: "flexible" | "until_date" | "until_target" | "until_date_or_target";
+            name: string;
+            /** @description Goal amount in USDC. */
+            target: string;
+            /** @description Required for the date locks, otherwise rejected. In the future, at most 10 years ahead. */
+            unlockAt?: string;
+        };
+        ConfirmDto: {
+            signedXdr?: string;
+            txHash?: string;
+            amount?: string;
+        };
+        AmountDto: {
+            /** @description USDC, at most 7 decimals. */
+            amount: string;
+        };
+        SavingsTotalsDto: {
+            asset: string;
+            plans: number;
+            /** @description Sum of all plan balances. */
+            balance: string;
+            /** @description Sum of all plan targets. */
+            target: string;
+        };
+        SavingsDashboardDto: {
+            /** @description Group savings: the same figures as `GET /groups/overview`. */
+            groups: components["schemas"]["GroupsOverviewDto"];
+            /** @description Personal savings plans. */
+            personal: components["schemas"]["SavingsTotalsDto"];
+            /**
+             * @description Group `totalSaved` (contributed to groups not yet completed, before
+             *     payouts) plus personal `balance` (held in plans now).
+             */
+            totalSaved: string;
+        };
+        PreparedTrustlineDto: {
+            /** @description Unsigned transaction (base64 XDR) for the wallet to sign and submit. */
+            xdr: string;
+        };
+        FaucetFundedDto: {
+            txHash: string;
+            amount: string;
+        };
         NotificationDto: {
             /** @enum {string} */
-            kind: "group_join_requested" | "group_join_approved" | "group_join_rejected" | "group_member_joined" | "group_started" | "proposal_created" | "proposal_approved" | "proposal_rejected" | "proposal_executed" | "contribution_missed" | "recovery_started" | "recovery_resolved" | "payout_received";
+            kind: "group_join_requested" | "group_join_approved" | "group_join_rejected" | "group_member_joined" | "group_started" | "proposal_created" | "proposal_approved" | "proposal_rejected" | "proposal_executed" | "contribution_missed" | "recovery_started" | "recovery_resolved" | "payout_received" | "slot_takeover_requested" | "slot_transfer_approved" | "slot_transferred";
             /** @description Ids for deep links. Every kind has `groupId`. Also: `round` (0-based): `contribution_missed`, `recovery_started`, `payout_received`. `proposalId`: `proposal_created`, `proposal_approved`, `proposal_rejected`, `proposal_executed`. `userId` (the person to review): `group_join_requested`, `group_member_joined`. No other keys are sent. */
             data: {
                 [key: string]: unknown;
@@ -4776,7 +5457,7 @@ export interface operations {
                 page?: number;
                 /** @description Items per page, 1 to 100. */
                 limit?: number;
-                /** @description Comma-separated. Any of: group_started, contribution_made, payout_made, group_completed, default_recorded, recovery_started, default_resolved, recovery_resolved, proposal_created, vote_cast, proposal_approved, proposal_rejected, proposal_expired, proposal_executed, group_paused, group_resumed, schedule_updated, member_removed. */
+                /** @description Comma-separated. Any of: group_started, contribution_made, payout_made, group_completed, default_recorded, recovery_started, default_resolved, recovery_resolved, proposal_created, vote_cast, proposal_approved, proposal_rejected, proposal_expired, proposal_executed, group_paused, group_resumed, schedule_updated, member_removed, slot_listed, slot_listing_closed, slot_takeover_requested, slot_transferred. */
                 kind?: string;
                 /**
                  * @description The history tabs. `governance`: proposals, votes, results, pause, resume
@@ -4835,7 +5516,7 @@ export interface operations {
                 /** @description Items per page, 1 to 100. */
                 limit?: number;
                 /** @description Omit for All. */
-                type?: "contribution" | "payout" | "withdrawal";
+                type?: "contribution" | "payout" | "withdrawal" | "savings_deposit" | "savings_withdrawal" | "slot_purchase" | "slot_sale";
                 /** @description Only this group's activity. */
                 groupId?: string;
             };
@@ -4946,6 +5627,1157 @@ export interface operations {
             };
             /** @description `from` is after `to` */
             400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponseDto"];
+                };
+            };
+        };
+    };
+    SlotsController_list_v1: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateListingDto"];
+            };
+        };
+        responses: {
+            /** @description Slot listed */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["ListingDto"];
+                        /** @example 201 */
+                        statusCode: number;
+                        /** @example Slot listed */
+                        message: string;
+                    };
+                };
+            };
+            /** @description Group not found or you are not a member */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponseDto"];
+                };
+            };
+            /** @description A listing rule is not met, or the slot is already listed */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponseDto"];
+                };
+            };
+        };
+    };
+    SlotsController_eligibility_v1: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Eligibility retrieved */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["SellerEligibilityDto"];
+                        /** @example 200 */
+                        statusCode: number;
+                        /** @example Eligibility retrieved */
+                        message: string;
+                    };
+                };
+            };
+            /** @description Group not found or you are not a member */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponseDto"];
+                };
+            };
+        };
+    };
+    SlotsController_withdraw_v1: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Listing withdrawn */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @example null */
+                        data: Record<string, never> | null;
+                        /** @example 200 */
+                        statusCode: number;
+                        /** @example Listing withdrawn */
+                        message: string;
+                    };
+                };
+            };
+            /** @description No open listing in this group */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponseDto"];
+                };
+            };
+        };
+    };
+    SlotsController_history_v1: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Slot transfers retrieved */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["SlotTransferDto"][];
+                        /** @example 200 */
+                        statusCode: number;
+                        /** @example Slot transfers retrieved */
+                        message: string;
+                    };
+                };
+            };
+            /** @description Group not found or you are not a member */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponseDto"];
+                };
+            };
+        };
+    };
+    SlotsController_marketplace_v1: {
+        parameters: {
+            query?: {
+                /** @description 1-based page number. */
+                page?: number;
+                /** @description Items per page, 1 to 100. */
+                limit?: number;
+                /** @description Part of the group name, ignoring case. */
+                search?: string;
+                /** @description Lowest asking price, inclusive. */
+                minPrice?: string;
+                /** @description Highest asking price, inclusive. */
+                maxPrice?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Listings retrieved */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: {
+                            results: components["schemas"]["ListingDto"][];
+                            paginationMeta: {
+                                /** @example true */
+                                nextPage: boolean;
+                                /** @example false */
+                                previousPage: boolean;
+                                /** @example 42 */
+                                totalCount: number;
+                                /** @example 20 */
+                                count: number;
+                                /** @example 3 */
+                                totalPages: number;
+                                /** @example 1 */
+                                currentPage: number;
+                            };
+                        };
+                        /** @example 200 */
+                        statusCode: number;
+                        /** @example Listings retrieved */
+                        message: string;
+                    };
+                };
+            };
+        };
+    };
+    SlotsController_mine_v1: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Listings retrieved */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["MyListingsDto"];
+                        /** @example 200 */
+                        statusCode: number;
+                        /** @example Listings retrieved */
+                        message: string;
+                    };
+                };
+            };
+        };
+    };
+    SlotsController_detail_v1: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Listing retrieved */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["ListingDto"];
+                        /** @example 200 */
+                        statusCode: number;
+                        /** @example Listing retrieved */
+                        message: string;
+                    };
+                };
+            };
+            /** @description Listing not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponseDto"];
+                };
+            };
+        };
+    };
+    SlotsController_request_v1: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Takeover requested */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["ListingDto"];
+                        /** @example 200 */
+                        statusCode: number;
+                        /** @example Takeover requested */
+                        message: string;
+                    };
+                };
+            };
+            /** @description You are the seller */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponseDto"];
+                };
+            };
+            /** @description An admin removed you from this group */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponseDto"];
+                };
+            };
+            /** @description Open listing not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponseDto"];
+                };
+            };
+            /** @description A buyer rule is not met */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponseDto"];
+                };
+            };
+        };
+    };
+    SlotsController_withdrawRequest_v1: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Takeover request withdrawn */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @example null */
+                        data: Record<string, never> | null;
+                        /** @example 200 */
+                        statusCode: number;
+                        /** @example Takeover request withdrawn */
+                        message: string;
+                    };
+                };
+            };
+            /** @description Takeover request not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponseDto"];
+                };
+            };
+        };
+    };
+    SlotsController_select_v1: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                buyerId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Transfer proposed */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["ListingDto"];
+                        /** @example 200 */
+                        statusCode: number;
+                        /** @example Transfer proposed */
+                        message: string;
+                    };
+                };
+            };
+            /** @description Not the seller */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponseDto"];
+                };
+            };
+            /** @description Listing or takeover request not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponseDto"];
+                };
+            };
+            /** @description A rule is not met, or a transfer of this slot is already being voted on */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponseDto"];
+                };
+            };
+        };
+    };
+    SlotsController_prepareAccept_v1: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Transaction prepared */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["PreparedTransactionDto"];
+                        /** @example 200 */
+                        statusCode: number;
+                        /** @example Transaction prepared */
+                        message: string;
+                    };
+                };
+            };
+            /** @description Stellar refused the call, e.g. not enough USDC in your wallet or no USDC trustline on the seller's */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponseDto"];
+                };
+            };
+            /** @description No approved takeover for you */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponseDto"];
+                };
+            };
+            /** @description Approval expired, or a rule is no longer met */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponseDto"];
+                };
+            };
+            /** @description Stellar or Soroban RPC is slow or unreachable, or the transaction is not on Stellar yet. Retry the same call (with the same txHash). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponseDto"];
+                };
+            };
+        };
+    };
+    SlotsController_accept_v1: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AcceptTransferDto"];
+            };
+        };
+        responses: {
+            /** @description Slot transferred */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["ListingDto"];
+                        /** @example 200 */
+                        statusCode: number;
+                        /** @example Slot transferred */
+                        message: string;
+                    };
+                };
+            };
+            /** @description The transaction did not accept this transfer */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponseDto"];
+                };
+            };
+            /** @description No approved takeover for you */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponseDto"];
+                };
+            };
+            /** @description Approval expired or a rule is no longer met */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponseDto"];
+                };
+            };
+            /** @description Stellar or Soroban RPC is slow or unreachable, or the transaction is not on Stellar yet. Retry the same call (with the same txHash). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponseDto"];
+                };
+            };
+        };
+    };
+    SavingsController_list_v1: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Savings goals retrieved */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["PlanDto"][];
+                        /** @example 200 */
+                        statusCode: number;
+                        /** @example Savings goals retrieved */
+                        message: string;
+                    };
+                };
+            };
+        };
+    };
+    SavingsController_create_v1: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreatePlanDto"];
+            };
+        };
+        responses: {
+            /** @description Savings goal prepared */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["PreparedPlanDto"];
+                        /** @example 201 */
+                        statusCode: number;
+                        /** @example Savings goal prepared */
+                        message: string;
+                    };
+                };
+            };
+            /** @description Invalid name, target, lock or unlock date */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponseDto"];
+                };
+            };
+            /** @description No linked wallet (Stellar) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponseDto"];
+                };
+            };
+            /** @description Stellar or Soroban RPC is slow or unreachable, or the transaction is not on Stellar yet. Retry the same call (with the same txHash). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponseDto"];
+                };
+            };
+        };
+    };
+    SavingsController_confirm_v1: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ConfirmDto"];
+            };
+        };
+        responses: {
+            /** @description Savings goal created */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["PlanDto"];
+                        /** @example 200 */
+                        statusCode: number;
+                        /** @example Savings goal created */
+                        message: string;
+                    };
+                };
+            };
+            /** @description The transaction did not create this plan for your wallet */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponseDto"];
+                };
+            };
+            /** @description Plan not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponseDto"];
+                };
+            };
+            /** @description Stellar or Soroban RPC is slow or unreachable, or the transaction is not on Stellar yet. Retry the same call (with the same txHash). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponseDto"];
+                };
+            };
+        };
+    };
+    SavingsController_detail_v1: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Savings goal retrieved */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["PlanDto"];
+                        /** @example 200 */
+                        statusCode: number;
+                        /** @example Savings goal retrieved */
+                        message: string;
+                    };
+                };
+            };
+            /** @description Plan not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponseDto"];
+                };
+            };
+        };
+    };
+    SavingsController_prepareDeposit_v1: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AmountDto"];
+            };
+        };
+        responses: {
+            /** @description Transaction prepared */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["PreparedTransactionDto"];
+                        /** @example 200 */
+                        statusCode: number;
+                        /** @example Transaction prepared */
+                        message: string;
+                    };
+                };
+            };
+            /** @description Stellar refused the call, e.g. not enough USDC in the wallet */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponseDto"];
+                };
+            };
+            /** @description Plan not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponseDto"];
+                };
+            };
+            /** @description Simulated mode, wrong wallet linked, or not enough USDC in the wallet */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponseDto"];
+                };
+            };
+            /** @description Stellar or Soroban RPC is slow or unreachable, or the transaction is not on Stellar yet. Retry the same call (with the same txHash). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponseDto"];
+                };
+            };
+        };
+    };
+    SavingsController_deposit_v1: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ConfirmDto"];
+            };
+        };
+        responses: {
+            /** @description Deposit recorded */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["PlanDto"];
+                        /** @example 200 */
+                        statusCode: number;
+                        /** @example Deposit recorded */
+                        message: string;
+                    };
+                };
+            };
+            /** @description The transaction did not deposit into this plan */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponseDto"];
+                };
+            };
+            /** @description Plan not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponseDto"];
+                };
+            };
+            /** @description Stellar or Soroban RPC is slow or unreachable, or the transaction is not on Stellar yet. Retry the same call (with the same txHash). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponseDto"];
+                };
+            };
+        };
+    };
+    SavingsController_prepareWithdrawal_v1: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AmountDto"];
+            };
+        };
+        responses: {
+            /** @description Transaction prepared */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["PreparedTransactionDto"];
+                        /** @example 200 */
+                        statusCode: number;
+                        /** @example Transaction prepared */
+                        message: string;
+                    };
+                };
+            };
+            /** @description Stellar refused the call, e.g. not enough USDC in the wallet */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponseDto"];
+                };
+            };
+            /** @description Plan not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponseDto"];
+                };
+            };
+            /** @description Locked, above the balance, simulated mode, or wrong wallet */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponseDto"];
+                };
+            };
+            /** @description Stellar or Soroban RPC is slow or unreachable, or the transaction is not on Stellar yet. Retry the same call (with the same txHash). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponseDto"];
+                };
+            };
+        };
+    };
+    SavingsController_withdraw_v1: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ConfirmDto"];
+            };
+        };
+        responses: {
+            /** @description Withdrawal recorded */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["PlanDto"];
+                        /** @example 200 */
+                        statusCode: number;
+                        /** @example Withdrawal recorded */
+                        message: string;
+                    };
+                };
+            };
+            /** @description The transaction did not withdraw from this plan */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponseDto"];
+                };
+            };
+            /** @description Plan not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponseDto"];
+                };
+            };
+            /** @description Locked or above the balance (simulated mode) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponseDto"];
+                };
+            };
+            /** @description Stellar or Soroban RPC is slow or unreachable, or the transaction is not on Stellar yet. Retry the same call (with the same txHash). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponseDto"];
+                };
+            };
+        };
+    };
+    DashboardController_overview_v1: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Savings dashboard retrieved */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["SavingsDashboardDto"];
+                        /** @example 200 */
+                        statusCode: number;
+                        /** @example Savings dashboard retrieved */
+                        message: string;
+                    };
+                };
+            };
+        };
+    };
+    FaucetController_trustline_v1: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Transaction prepared */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["PreparedTrustlineDto"];
+                        /** @example 200 */
+                        statusCode: number;
+                        /** @example Transaction prepared */
+                        message: string;
+                    };
+                };
+            };
+            /** @description The faucet is off: not Stellar testnet, or no issuer secret for the configured USDC */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponseDto"];
+                };
+            };
+            /** @description No linked wallet, wallet not funded on testnet, or already trusted */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponseDto"];
+                };
+            };
+            /** @description Stellar is unreachable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponseDto"];
+                };
+            };
+        };
+    };
+    FaucetController_fund_v1: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Test USDC sent */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["FaucetFundedDto"];
+                        /** @example 200 */
+                        statusCode: number;
+                        /** @example Test USDC sent */
+                        message: string;
+                    };
+                };
+            };
+            /** @description The faucet is off: not Stellar testnet, or no issuer secret for the configured USDC */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponseDto"];
+                };
+            };
+            /** @description No linked wallet, wallet not on testnet, no USDC trustline, or trustline limit too low */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponseDto"];
+                };
+            };
+            /** @description This wallet got USDC in the last hour, the global hourly cap is reached, or too many requests */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponseDto"];
+                };
+            };
+            /** @description Stellar is unreachable or slow to confirm. When the message says to check your wallet, the payment may still land: do not retry at once. */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };

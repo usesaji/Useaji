@@ -2,6 +2,7 @@ import { readDb, updateDb } from "@/mocks/db";
 import { stellarAccount, txHash } from "@/mocks/ids";
 import { payFromWallet } from "@/mocks/handlers/wallet";
 import { money, num } from "@/mocks/engine";
+import { hashOf, signXdr } from "@/mocks/xdr";
 import type { PaymentInstructionsDto } from "@/lib/api/dto";
 
 /**
@@ -30,6 +31,21 @@ export async function pay(instructions: PaymentInstructionsDto, address: string)
 	await wait(1200);
 	updateDb((db) => payFromWallet(db, address, num(instructions.amount)));
 	return txHash();
+}
+
+/** "Signs" a transaction the mock API prepared: the mock confirm checks who signed (`mocks/xdr.ts`). */
+export async function signTransaction(xdr: string, address: string) {
+	await wait(1000);
+	return signXdr(xdr, address);
+}
+
+export async function signAndSubmit(xdr: string, address: string) {
+	await signTransaction(xdr, address);
+	return txHash();
+}
+
+export async function transactionHash(signedXdr: string) {
+	return hashOf(signedXdr);
 }
 
 export async function usdcBalance(address: string) {

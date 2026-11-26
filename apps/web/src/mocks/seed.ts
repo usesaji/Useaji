@@ -1,8 +1,9 @@
 import { DAY, HOUR, MINUTE } from "@/mocks/clock";
 import { castVote, createProposal, startCycle, tick } from "@/mocks/engine";
 import { createListing, requestTakeover } from "@/mocks/slots";
-import { contractId, inviteCode, stellarAccount, txHash, uuid } from "@/mocks/ids";
+import { inviteCode, stellarAccount, txHash, uuid } from "@/mocks/ids";
 import type { MockBot, MockDb, MockGroup, MockUser } from "@/mocks/types";
+import type { SavingsLock } from "@/lib/api/dto";
 
 /**
  * Demo data. Sign in as demo@usesaji.com / Password1 (Ada Okafor). Everything else is a simulated
@@ -18,10 +19,12 @@ import type { MockBot, MockDb, MockGroup, MockUser } from "@/mocks/types";
  * - Campus Savers (Ada is admin): forming, two join requests to review.
  * - Wedding Fund: completed; Ada's payout is in her Saji balance.
  * - Abuja Tech Savers, Ikeja Traders Circle: public groups to discover and join.
- * - Slot marketplace (v3): in Summer Fund (Ada is a member) Amara listed slot #5 and Dean asked
- *   for it: three approvals in, Ada's is the deciding one; an earlier transfer (Dami → Fatima) is
- *   on record. In Community Circle (Ada isn't in it) Dami's slot #7 is open for Ada to request.
- * - Personal savings (v3): "Travel fund" (flexible, 1,200 of 3,000) and "Laptop fund" (locked,
+ * - Slot marketplace (v3): in Summer Fund (Ada is a member) Amara listed slot 5 for 50 USDC, Dean
+ *   asked, Amara put him to a vote: three approvals in, Ada's is the deciding one (then Dean accepts
+ *   on his own). An earlier free transfer (Dami → Fatima) is on record. In Community Circle (Ada isn't
+ *   in it) Dami's slot 7 is listed for 20 USDC: Ada asks, Dami picks her, the members approve, Ada
+ *   accepts. Both groups are public (only public groups can list slots).
+ * - Personal savings (v3): "Travel fund" (flexible, 1,200 of 3,000) and "Laptop fund" (locked until a date,
  *   800 of 2,000, released in 5 weeks: skip ahead to see it open).
  */
 
@@ -160,10 +163,11 @@ export function seed(version: number): MockDb {
 		events: [],
 		notifications: [],
 		walletBalances: Object.fromEntries(users.filter((u) => u.wallet).map((u) => [u.wallet!.publicKey, "500.00"])),
+		faucetGrants: {},
 		savingsPlans: [],
 		savingsTransactions: [],
 		slotListings: [],
-		slotTakeovers: [],
+		slotTransfers: [],
 	};
 
 	const join = (g: MockGroup, people: MockUser[], adminUser: MockUser) => {
@@ -239,12 +243,14 @@ export function seed(version: number): MockDb {
 		contributionAmount: "250.00",
 		targetAmount: "1500.00",
 		governance: { thresholdKind: "percent", thresholdValue: 80, votingPeriodHours: 72, executionWindowHours: 48 },
+		publicDiscovery: true,
 	});
 	join(summer, [kemi, zainab, segun, dami, amara, ada], kemi);
 
 	const community = group("Community Circle", now - 20 * DAY, {
 		contributionAmount: "100.00",
 		targetAmount: "800.00",
+		publicDiscovery: true,
 	});
 	join(community, [ibrahim, yusuf, bola, chioma, tola, ngozi, dami, zainab], ibrahim);
 
@@ -267,14 +273,8 @@ export function seed(version: number): MockDb {
 		[
 			now - 45 * DAY,
 			() => {
-				// Dami hands slot #4 to Fatima; the members approve and Fatima signs (all simulated).
-				const listing = createListing(
-					db,
-					summer,
-					dami.id,
-					{ expiresAt: iso(now - 38 * DAY), reason: "Moving abroad for work." },
-					iso(now - 45 * DAY),
-				);
+				// Dami gives slot 4 to Fatima: she asks, Dami picks her, the members approve, she accepts (all simulated).
+				const listing = createListing(db, summer, dami.id, "0", iso(now - 45 * DAY));
 				requestTakeover(db, listing, fatima.id, iso(now - 44 * DAY));
 			},
 		],
@@ -295,20 +295,14 @@ export function seed(version: number): MockDb {
 		[
 			now - 6 * DAY,
 			() => {
-				const listing = createListing(db, community, tola.id, { expiresAt: iso(now - 1 * DAY) }, iso(now - 6 * DAY));
+				const listing = createListing(db, community, tola.id, "30", iso(now - 6 * DAY));
 				requestTakeover(db, listing, emeka.id, iso(now - 5 * DAY));
 			},
 		],
 		[
 			now - 2 * DAY,
 			() =>
-				createListing(
-					db,
-					summer,
-					amara.id,
-					{ expiresAt: iso(now + 8 * DAY), reason: "I need a more flexible savings schedule." },
-					iso(now - 2 * DAY),
-				),
+				createListing(db, summer, amara.id, "50", iso(now - 2 * DAY)),
 		],
 		[
 			now - 2 * DAY,
@@ -328,7 +322,7 @@ export function seed(version: number): MockDb {
 		[
 			now - 1 * DAY,
 			() => {
-				// Dean asks for Amara's slot: the simulated members approve, one short of the 4 needed.
+				// Dean asks for Amara's slot; Amara puts him to a vote; the simulated members approve, one short of the 4 needed.
 				const listing = db.slotListings.find((l) => l.groupId === summer.id && l.sellerId === amara.id)!;
 				requestTakeover(db, listing, dean.id, iso(now - 1 * DAY));
 			},
@@ -336,13 +330,7 @@ export function seed(version: number): MockDb {
 		[
 			now - 3 * HOUR,
 			() =>
-				createListing(
-					db,
-					community,
-					dami.id,
-					{ expiresAt: iso(now + 6 * DAY), reason: "Switching to a plan that fits my pay dates." },
-					iso(now - 3 * HOUR),
-				),
+				createListing(db, community, dami.id, "20", iso(now - 3 * HOUR)),
 		],
 		[
 			now - 2 * HOUR,
@@ -370,12 +358,12 @@ export function seed(version: number): MockDb {
 	}
 	tick(db, now);
 
-	savingsPlan(db, ada, "Travel fund", "flexible", "3000.00", now + 125 * DAY, now - 50 * DAY, [
+	savingsPlan(db, ada, "Travel fund", "flexible", "3000.00", null, now - 50 * DAY, [
 		[now - 47 * DAY, "500.00"],
 		[now - 33 * DAY, "400.00"],
 		[now - 19 * DAY, "300.00"],
 	]);
-	savingsPlan(db, ada, "Laptop fund", "locked", "2000.00", now + 35 * DAY, now - 48 * DAY, [
+	savingsPlan(db, ada, "Laptop fund", "until_date", "2000.00", now + 35 * DAY, now - 48 * DAY, [
 		[now - 47 * DAY, "500.00"],
 		[now - 19 * DAY, "300.00"],
 	]);
@@ -392,9 +380,9 @@ function savingsPlan(
 	db: MockDb,
 	owner: MockUser,
 	name: string,
-	kind: "flexible" | "locked",
-	targetAmount: string,
-	targetDate: number,
+	lock: SavingsLock,
+	target: string,
+	unlockAt: number | null,
 	createdAt: number,
 	deposits: [number, string][],
 ) {
@@ -403,11 +391,11 @@ function savingsPlan(
 		id,
 		userId: owner.id,
 		name,
-		kind,
-		targetAmount,
-		targetDate: iso(targetDate),
-		ownerWallet: owner.wallet!.publicKey,
-		contractId: contractId(),
+		lock,
+		target,
+		unlockAt: unlockAt === null ? null : iso(unlockAt),
+		ownerAddress: owner.wallet!.publicKey,
+		txHash: txHash(),
 		createdAt: iso(createdAt),
 	});
 	for (const [at, amount] of deposits) {

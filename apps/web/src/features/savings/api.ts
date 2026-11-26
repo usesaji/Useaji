@@ -1,35 +1,32 @@
 /**
- * Personal savings plans (`/v1/savings/*`, v3). PROVISIONAL: the API doesn't have these routes yet;
- * the mock serves them (src/mocks/handlers/savings.ts) with the shapes in lib/api/dto.ts.
+ * Personal savings (`/v1/savings/*`, v3): goals in the personal savings contract, and the savings
+ * dashboard. Money moves in three steps (docs/frontend-integration.md §2): `…/prepare` returns an
+ * unsigned transaction for the owner wallet, the wallet signs it, the confirm call submits it.
  */
-import { apiGet, apiPost, type Page } from "@/lib/api/client";
-import type {
-	CreateSavingsPlanDto,
-	SavingsDepositDto,
-	SavingsPlanDto,
-	SavingsSummaryDto,
-	SavingsTransactionDto,
-	SavingsWithdrawalDto,
-} from "@/lib/api/dto";
+import { apiGet, apiPost } from "@/lib/api/client";
+import type { AmountDto, ConfirmDto, CreatePlanDto, PlanDto, PreparedPlanDto, PreparedTransactionDto, SavingsDashboardDto } from "@/lib/api/dto";
 
-/** Personal savings across every plan (the dashboard's "Personal savings"). */
-export const getSavingsSummary = () => apiGet<SavingsSummaryDto>("/savings/summary");
+/** Group savings (as `GET /groups/overview`), personal savings, and both together. */
+export const getSavingsOverview = () => apiGet<SavingsDashboardDto>("/savings/overview");
 
-export const listSavingsPlans = (query: { page?: number; limit?: number } = {}) =>
-	apiGet<Page<SavingsPlanDto>>("/savings/plans", query);
+/** Newest first, without `movements`. */
+export const listSavingsPlans = () => apiGet<PlanDto[]>("/savings/plans");
 
-/** Needs a linked wallet: it becomes the plan's owner wallet. */
-export const createSavingsPlan = (input: CreateSavingsPlanDto) => apiPost<SavingsPlanDto>("/savings/plans", input);
+/** With its last 100 movements, newest first. Someone else's plan is a 404. */
+export const getSavingsPlan = (id: string) => apiGet<PlanDto>(`/savings/plans/${id}`);
 
-export const getSavingsPlan = (id: string) => apiGet<SavingsPlanDto>(`/savings/plans/${id}`);
+/** Stellar: `xdr` to sign, then `confirmSavingsPlan`. Simulated: `xdr` is null and `plan` is created. */
+export const createSavingsPlan = (input: CreatePlanDto) => apiPost<PreparedPlanDto>("/savings/plans", input);
 
-export const listSavingsTransactions = (id: string, query: { page?: number; limit?: number } = {}) =>
-	apiGet<Page<SavingsTransactionDto>>(`/savings/plans/${id}/transactions`, query);
+/** The plan id is reserved for 24 hours; confirming twice returns the same plan. */
+export const confirmSavingsPlan = (planId: string, input: ConfirmDto) => apiPost<PlanDto>(`/savings/plans/${planId}/confirm`, input);
 
-/** After the wallet paid `amount` to `plan.deposit`: records it with the transaction hash. */
-export const recordDeposit = (id: string, input: SavingsDepositDto) =>
-	apiPost<SavingsTransactionDto>(`/savings/plans/${id}/deposits`, input);
+export const prepareDeposit = (id: string, input: AmountDto) => apiPost<PreparedTransactionDto>(`/savings/plans/${id}/deposits/prepare`, input);
 
-/** Signed by the owner wallet; the contract releases `amount` to that wallet. 403 while a locked plan is locked. */
-export const withdrawSavings = (id: string, input: SavingsWithdrawalDto) =>
-	apiPost<SavingsTransactionDto>(`/savings/plans/${id}/withdrawals`, input);
+/** `{ signedXdr }` after the wallet signed; `{ amount }` alone in simulated mode. */
+export const confirmDeposit = (id: string, input: ConfirmDto) => apiPost<PlanDto>(`/savings/plans/${id}/deposits`, input);
+
+/** 409 while the lock holds (the message says until when), above the balance, or from another wallet. */
+export const prepareWithdrawal = (id: string, input: AmountDto) => apiPost<PreparedTransactionDto>(`/savings/plans/${id}/withdrawals/prepare`, input);
+
+export const confirmWithdrawal = (id: string, input: ConfirmDto) => apiPost<PlanDto>(`/savings/plans/${id}/withdrawals`, input);

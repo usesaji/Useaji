@@ -1,6 +1,15 @@
 /** The linked wallet, payout address and withdraw destinations (`/v1/wallet/*`). */
 import { apiDelete, apiGet, apiPost, apiPut } from "@/lib/api/client";
-import type { AddDestinationDto, DestinationDto, LinkedWalletDto, ReauthDto, WalletChallengeDto, WalletSummaryDto } from "@/lib/api/dto";
+import type {
+	AddDestinationDto,
+	DestinationDto,
+	FaucetFundedDto,
+	LinkedWalletDto,
+	PreparedTrustlineDto,
+	ReauthDto,
+	WalletChallengeDto,
+	WalletSummaryDto,
+} from "@/lib/api/dto";
 
 /**
  * Changes to where money goes re-check who you are: `proof` is `currentPassword` (or a Google ID
@@ -29,3 +38,14 @@ export const setPrimaryDestination = (id: string, proof: ReauthDto) => apiPut<De
 
 /** The API doesn't re-check removals. Removing the primary makes the oldest remaining one primary. */
 export const removeDestination = (id: string) => apiDelete<DestinationDto[]>(`/wallet/destinations/${id}`);
+
+// ---------------------------------------------------------------- test USDC faucet (testnet only)
+
+/**
+ * A transaction that adds Saji's test USDC to the linked wallet. The wallet signs and submits it
+ * itself (no confirm call). 404: the faucet is off. 409 "already trusts USDC": skip this step.
+ */
+export const prepareFaucetTrustline = () => apiPost<PreparedTrustlineDto>("/faucet/trustline/prepare");
+
+/** Sends test USDC (1000) to the linked wallet. 429: once per wallet per hour, and a global hourly cap. */
+export const requestTestUsdc = () => apiPost<FaucetFundedDto>("/faucet/usdc");

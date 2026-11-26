@@ -15,6 +15,7 @@ import {
 	userById,
 } from "@/mocks/engine";
 import { explorerTx } from "@/mocks/ids";
+import { USDC_ISSUER } from "@/lib/stellar/config";
 import type {
 	MockDb,
 	MockDefault,
@@ -22,7 +23,6 @@ import type {
 	MockGroup,
 	MockProposal,
 	MockSavingsPlan,
-	MockSavingsTx,
 	MockUser,
 } from "@/mocks/types";
 import type {
@@ -36,8 +36,8 @@ import type {
 	MemberDto,
 	MemberPreviewDto,
 	ProposalDto,
-	SavingsPlanDto,
-	SavingsTransactionDto,
+	MovementDto,
+	PlanDto,
 } from "@/lib/api/dto";
 
 /** Mock rows → the Railway API's DTOs (docs/openapi.json), field for field. */
@@ -73,8 +73,6 @@ export function accountDto(user: MockUser): AccountDto {
 		wallet: user.wallet,
 	};
 }
-
-const USDC_ISSUER = "GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5";
 
 /** The memo the escrow expects for a round's payment (contributions and missed ones alike). */
 const roundMemo = (g: MockGroup, round: number) => `saji-${g.id.slice(0, 8)}-r${round + 1}`;
@@ -238,10 +236,21 @@ export function cycleDto(db: MockDb, g: MockGroup, viewerId: string, at: number)
 		paused: cycle.paused,
 		openDefaults: defaults.map((d) => defaultDto(db, d, at, viewerId)),
 		contributions: payersOf(db, g, round).map((userId) => {
-			const paid = db.contributions.find((c) => c.groupId === g.id && c.round === round && c.userId === userId);
+			const own = db.contributions.find((c) => c.groupId === g.id && c.round === round && c.userId === userId);
+			// Took the slot over after its previous holder paid this round: that payment counts.
+			const previous = own
+				? undefined
+				: db.contributions.find(
+						(c) =>
+							c.groupId === g.id &&
+							c.round === round &&
+							db.slotTransfers.some((t) => t.groupId === g.id && t.toId === userId && t.fromId === c.userId),
+					);
+			const paid = own ?? previous;
 			const hidden = hideOthers && userId !== viewerId;
 			return {
 				member: memberPreview(db, userId),
+				coveredByPreviousHolder: !!previous,
 				paid: !!paid,
 				late: paid?.late ?? false,
 				paidAt: paid?.paidAt ?? null,
@@ -285,6 +294,18 @@ export function proposalDto(db: MockDb, p: MockProposal, viewerId: string, at: n
 	return {
 		creationTxHash: created,
 		creationTxUrl: created ? explorerTx(created) : null,
+		slotTransfer: (() => {
+			const listing = p.slotTransfer && db.slotListings.find((l) => l.id === p.slotTransfer!.listingId);
+			return listing
+				? {
+						listingId: listing.id,
+						seller: memberPreview(db, listing.sellerId),
+						position: listing.position,
+						buyer: memberPreview(db, p.slotTransfer!.buyerId),
+						price: listing.askingPrice,
+					}
+				: null;
+		})(),
 		id: p.id,
 		number: p.number,
 		type: p.type,
@@ -338,42 +359,69 @@ export function totalPaidOut(db: MockDb, userId: string) {
 	return db.payouts.filter((p) => p.userId === userId).reduce((sum, p) => sum + num(p.amount), 0);
 }
 
-// ---------------------------------------------------------------- personal savings (v3, provisional)
+// ---------------------------------------------------------------- personal savings (v3)
 
-/** Deposits minus withdrawals. */
+/** Deposits minus withdrawals (the contract's balance for the plan). */
 export function planBalance(db: MockDb, planId: string) {
 	return db.savingsTransactions
 		.filter((t) => t.planId === planId)
 		.reduce((sum, t) => sum + (t.kind === "deposit" ? num(t.amount) : -num(t.amount)), 0);
 }
 
-/** Locked plans release everything on `targetDate`; flexible plans release the balance any time. */
-export function planWithdrawable(db: MockDb, p: MockSavingsPlan, at: number) {
-	const locked = p.kind === "locked" && p.targetDate !== null && ms(p.targetDate) > at;
-	return locked ? 0 : planBalance(db, p.id);
+/**
+ * Whether the plan's lock lets money out now. `until_target` holds while the balance is below the
+ * target (a withdrawal that drops it below locks the plan again); `until_date_or_target`: either.
+ */
+export function lockOpen(db: MockDb, p: MockSavingsPlan, at: number) {
+	const dateOpen = !!p.unlockAt && ms(p.unlockAt) <= at;
+	const targetOpen = planBalance(db, p.id) + 1e-9 >= num(p.target);
+	switch (p.lock) {
+		case "flexible":
+			return true;
+		case "until_date":
+			return dateOpen;
+		case "until_target":
+			return targetOpen;
+		case "until_date_or_target":
+			return dateOpen || targetOpen;
+	}
 }
 
-export function savingsPlanDto(db: MockDb, p: MockSavingsPlan, at: number): SavingsPlanDto {
+/** `movements` only on `GET /savings/plans/{id}` (the last 100, newest first). */
+export function planDto(db: MockDb, p: MockSavingsPlan, at: number, withMovements = false): PlanDto {
 	const balance = planBalance(db, p.id);
+	let running = 0;
+	const movements = db.savingsTransactions
+		.filter((t) => t.planId === p.id)
+		.sort((a, b) => ms(a.createdAt) - ms(b.createdAt))
+		.map((t): MovementDto => {
+			running += t.kind === "deposit" ? num(t.amount) : -num(t.amount);
+			return {
+				id: t.id,
+				kind: t.kind,
+				amount: t.amount,
+				balanceAfter: money(running),
+				txHash: t.txHash,
+				txUrl: explorerTx(t.txHash),
+				createdAt: t.createdAt,
+			};
+		})
+		.reverse()
+		.slice(0, 100);
 	return {
 		id: p.id,
 		name: p.name,
-		kind: p.kind,
+		target: p.target,
 		asset: "USDC",
-		targetAmount: p.targetAmount,
-		targetDate: p.targetDate,
+		lock: p.lock,
+		unlockAt: p.unlockAt,
 		balance: money(balance),
-		withdrawable: money(planWithdrawable(db, p, at)),
-		unlocksAt: p.kind === "locked" ? p.targetDate : null,
-		progressPercent: Math.min(100, Math.floor((balance / Math.max(num(p.targetAmount), 0.01)) * 100)),
-		ownerWallet: p.ownerWallet,
-		contractId: p.contractId,
-		deposit: { destination: p.contractId, assetCode: "USDC", assetIssuer: null, memo: `saji sv ${p.id.slice(0, 8)}` },
-		status: "active",
+		progressPercent: Math.min(100, Math.round((balance / Math.max(num(p.target), 0.01)) * 10_000) / 100),
+		canWithdraw: balance > 0 && lockOpen(db, p, at),
+		ownerAddress: p.ownerAddress,
+		txHash: p.txHash,
+		txUrl: explorerTx(p.txHash),
 		createdAt: p.createdAt,
+		movements: withMovements ? movements : null,
 	};
-}
-
-export function savingsTxDto(t: MockSavingsTx): SavingsTransactionDto {
-	return { id: t.id, planId: t.planId, kind: t.kind, amount: t.amount, asset: "USDC", txHash: t.txHash, createdAt: t.createdAt };
 }

@@ -3,8 +3,31 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "@repo/ui/sonner";
-import { addDestination, getWallet, linkWallet, listDestinations, removeDestination, setPrimaryDestination, unlinkWallet, walletChallenge } from "@/features/wallet/api";
-import { addUsdcTrustline, connectWallet, disconnectWallet, isWalletDismissal, signMessage, walletErrorMessage, walletFor, walletUsdc } from "@/features/wallet/kit";
+import {
+	addDestination,
+	getWallet,
+	linkWallet,
+	listDestinations,
+	prepareFaucetTrustline,
+	removeDestination,
+	requestTestUsdc,
+	setPrimaryDestination,
+	unlinkWallet,
+	walletChallenge,
+} from "@/features/wallet/api";
+import {
+	addUsdcTrustline,
+	connectWallet,
+	disconnectWallet,
+	fundTestnetAccount,
+	isWalletDismissal,
+	signAndSubmit,
+	signMessage,
+	walletErrorMessage,
+	walletFor,
+	walletUsdc,
+} from "@/features/wallet/kit";
+import { ApiError } from "@/lib/api/client";
 import { errorMessage } from "@/features/auth/hooks";
 import { isReauthCancelled, withIdentity } from "@/features/auth/reauth";
 import type { AddDestinationDto } from "@/lib/api/dto";
@@ -67,6 +90,96 @@ export function useAddUsdcTrustline() {
 			if (isWalletDismissal(error)) toast.info("Cancelled");
 			else toast.error("Could not enable USDC", { description: walletErrorMessage(error, errorMessage(error)) });
 		},
+	});
+}
+
+/**
+ * Whether the API's test USDC faucet is on (docs/frontend-integration.md §3). The only way to ask is
+ * the trustline prepare call, which changes nothing: 404 = off (production, simulated mode), so the
+ * faucet UI hides. Asked once per linked wallet.
+ */
+export function useFaucetAvailable(linked: string | null | undefined) {
+	return useQuery({
+		queryKey: ["faucet", "available", linked],
+		enabled: !!linked,
+		staleTime: Infinity,
+		retry: false,
+		queryFn: async () => {
+			try {
+				await prepareFaucetTrustline();
+				return true;
+			} catch (error) {
+				if (error instanceof ApiError && error.status === 404) return false;
+				return true; // 409 (already trusts USDC, not on Testnet yet…) means it's on
+			}
+		},
+	});
+}
+
+export type FaucetStep = "idle" | "fund" | "trustline" | "usdc";
+
+export const FAUCET_STEP_LABEL: Record<FaucetStep, string> = {
+	idle: "Get test USDC",
+	fund: "Creating your Testnet account…",
+	trustline: "Confirm in your wallet…",
+	usdc: "Sending test USDC…",
+};
+
+const alreadyTrusts = (error: unknown) => error instanceof ApiError && error.status === 409 && /already trusts/i.test(error.message);
+
+/**
+ * Wallet setup on Testnet, in one go: create the account with test XLM if it isn't on Testnet
+ * (Friendbot), add Saji's test USDC to it (the API prepares the transaction; the wallet signs and
+ * submits it), then ask the faucet for test USDC. Each step is skipped when it's already done.
+ */
+export function useGetTestUsdc() {
+	const queryClient = useQueryClient();
+	const [step, setStep] = useState<FaucetStep>("idle");
+	const mutation = useMutation({
+		mutationFn: async (linked: string) => {
+			try {
+				const balance = await walletUsdc(linked);
+				if (!balance.funded) {
+					setStep("fund");
+					await fundTestnetAccount(linked);
+				}
+				if (!balance.trustline) {
+					setStep("trustline");
+					try {
+						const { xdr } = await prepareFaucetTrustline();
+						await signAndSubmit(xdr, await walletFor(linked));
+					} catch (error) {
+						if (!alreadyTrusts(error)) throw error;
+					}
+				}
+				setStep("usdc");
+				return await requestTestUsdc();
+			} finally {
+				setStep("idle");
+			}
+		},
+		onSuccess: (sent) => {
+			void queryClient.invalidateQueries({ queryKey: ["wallet", "usdc"] });
+			toast.success("Test USDC sent", { description: `${Number(sent.amount).toLocaleString()} test USDC is on its way to your wallet.` });
+		},
+		onError: (error) => {
+			if (isWalletDismissal(error)) toast.info("Cancelled", { description: "Your wallet wasn't changed." });
+			else toast.error("Could not get test USDC", { description: walletErrorMessage(error, errorMessage(error)) });
+		},
+	});
+	return { ...mutation, step };
+}
+
+/** Creates the wallet's account on Testnet with test XLM, when the faucet is off. */
+export function useFundTestnetAccount() {
+	const queryClient = useQueryClient();
+	return useMutation({
+		mutationFn: (address: string) => fundTestnetAccount(address),
+		onSuccess: () => {
+			void queryClient.invalidateQueries({ queryKey: ["wallet", "usdc"] });
+			toast.success("Account created on Testnet", { description: "Your wallet now holds test XLM for network fees." });
+		},
+		onError: (error) => toast.error("Could not fund the wallet", { description: walletErrorMessage(error, errorMessage(error)) }),
 	});
 }
 

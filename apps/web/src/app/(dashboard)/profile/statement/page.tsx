@@ -31,18 +31,22 @@ function toCsv(s: StatementDto) {
 		["Period", `${s.from ?? "start"} to ${s.to}`],
 		["Generated", s.generatedAt],
 		[],
-		["Date", "Type", "Group", "Amount", "Asset", "Stellar transaction"],
-		...s.transactions.map((t) => [t.createdAt, t.kind, t.group?.name ?? "", t.amount, t.asset, t.txHash]),
+		["Date", "Type", "Group", "Savings goal", "Amount", "Asset", "Stellar transaction"],
+		...s.transactions.map((t) => [t.createdAt, t.kind, t.group?.name ?? "", t.plan?.name ?? "", t.amount, t.asset, t.txHash]),
 		[],
 		["Total contributions", s.totals.contributions],
 		["Total payouts", s.totals.payouts],
 		["Total withdrawals", s.totals.withdrawals],
+		["Total savings deposits", s.totals.savingsDeposits],
+		["Total savings withdrawals", s.totals.savingsWithdrawals],
+		["Total slot purchases", s.totals.slotPurchases],
+		["Total slot sales", s.totals.slotSales],
 		...(s.truncated ? [["Note", "More than 10,000 rows: narrow the dates for the rest."]] : []),
 	];
 	return lines.map((row) => row.map(cell).join(",")).join("\n");
 }
 
-/** Generate Statement: every contribution and payout in a period (`GET /statements`), as a CSV download. */
+/** Generate Statement: every contribution, payout and savings movement in a period (`GET /statements`), as a CSV download. */
 export default function StatementPage() {
 	const [start, setStart] = useState("");
 	const [end, setEnd] = useState("");
@@ -72,7 +76,7 @@ export default function StatementPage() {
 
 	return (
 		<div className="w-full max-w-2xl space-y-6 pb-10">
-			<PageHeader title="Generate Statement" subtitle="Every contribution and payout on your account." back backHref={pageRoutes.dashboardRoutes.ME} />
+			<PageHeader title="Generate Statement" subtitle="Every contribution, payout and savings movement on your account." back backHref={pageRoutes.dashboardRoutes.ME} />
 			<section className="space-y-6 rounded-[20px] bg-panel p-6 md:p-7">
 				<div>
 					<p className="text-sm font-light">Period</p>

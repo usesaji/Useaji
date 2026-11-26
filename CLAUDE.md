@@ -23,7 +23,7 @@ docs/           brief, OpenAPI spec copy, plan, backend gaps
 
 `pnpm dev` (all three) · `pnpm build` · `pnpm check-types` · `pnpm lint` (UI package: `--max-warnings 0`)
 · `pnpm format` (prettier: tabs, width 130). Web only: `pnpm --filter web test:mock` (the MVP 2 journey
-and v3 (slots, personal savings) through the real client and the mock, 105 checks) · `check:api` (app calls vs `docs/openapi.json`) ·
+and v3 (slots, personal savings, the faucet) through the real client and the mock, 129 checks) · `check:api` (app calls vs `docs/openapi.json`) ·
 `api:types` (regenerate `src/lib/api/schema.d.ts` from the spec).
 
 ## Deployment (Vercel Services)
@@ -44,17 +44,17 @@ toasts (Saji-styled, `@repo/ui/sonner`), Base UI / Radix primitives, `@creit.tec
 
 ## Data
 
-- **Backend:** the Railway API (`docs/openapi.json`; refresh from `<api>/docs-json`, then
+- **Backend:** the Saji API at `https://pay.usesaji.com` (`docs/openapi.json`; refresh from `<api>/docs-json`, then
   `pnpm --filter web api:types`). Routes under `/v1`. Success `{ statusCode, message, data }`; lists
   put `{ results, paginationMeta }` in `data` (`?page&limit`, limit at most 100); errors
   `{ statusCode, code, message, details?, requestId }` → `ApiError` (a "Validation failed" shows its
   first `details` message).
-- **The web app is on Railway** (`lib/api/source.ts`). The browser calls `/api/v1/*` on its own
+- **The web app is live on the API** (`lib/api/source.ts`). The browser calls `/api/v1/*` on its own
   origin, rewritten in `apps/web/next.config.ts` to the API (`API_PROXY_TARGET`). Wallets follow the
   API: real ones (Stellar Wallets Kit, Testnet) live. `NEXT_PUBLIC_API_SOURCE=mock` switches to the
   mock (offline demos, `test:mock`) with its simulated wallet. The admin console works the same way
   (live by default, `/api/health` proxied to the API's root). The backend URL is `API_PROXY_TARGET`
-  (with `/v1`) in each app's `.env.local`; it defaults to the Railway URL, so Vercel needs nothing.
+  (with `/v1`) in each app's `.env.local`; it defaults to `https://pay.usesaji.com/v1`, so Vercel needs nothing.
 - **The API rejects undeclared query parameters** (400 "property x should not exist"): send only
   what the spec declares for a route (`pnpm --filter web check:api` checks routes, not parameters).
 - **Everyone pays every round, the round's recipient included**; the payout is the sum paid that round.
@@ -62,17 +62,33 @@ toasts (Saji-styled, `@repo/ui/sonner`), Base UI / Radix primitives, `@creit.tec
 - **Payouts go straight to `WalletSummaryDto.payoutAddress`** (the primary withdraw destination, else
   the linked wallet). Groups hold no balance for you: no group withdraw flow, only "Paid out to you" and
   where payouts go (`/profile/withdraw-info`, "Payout Addresses").
-- **Personal savings (v3, `features/savings`, `/savings/*`)** are the exception: each plan's savings
-  contract holds a balance. Deposits come from the plan's `ownerWallet`; withdrawals are signed by it
-  and only ever go back to it; a locked plan releases nothing before `unlocksAt`. **Provisional:** the
-  API has no `/savings` routes yet. The DTOs are hand-written in `lib/api/dto.ts` (marked PROVISIONAL)
-  and served by the mock only (`notInApi`); the proposed contract is in BACKEND-GAPS.
-- **Slot marketplace (v3, `features/slots`, `/groups/marketplace`, `/groups/[id]/{slot/list,takeovers,transfers}`)**,
-  also provisional (same DTO section, rules in `mocks/slots.ts`). A slot is one round of
-  `cycle.schedule`. Takeover: list → an outsider requests → every member but the seller votes (the
-  group's threshold) → the incoming member signs → the schedule entry moves, they join, the seller
-  leaves. One slot per person per group. Records stay with whoever paid them; `paidThisRound` credits
-  a round the previous owner already paid. The circle page shows it all in `SlotPanel`.
+- **Personal savings (v3, `features/savings`, `/savings/*`)** are the exception: each goal holds a
+  balance in the shared savings contract (`SAVINGS_CONTRACT`). In the API (`PlanDto`; guide:
+  `docs/frontend-integration.md` §4–5). Deposits come from the plan's `ownerAddress`; withdrawals are
+  signed by it and only ever go back to it. `lock` is `flexible`, `until_date`, `until_target` or
+  `until_date_or_target` (copy in `features/savings/copy.ts`); `canWithdraw` decides the button.
+  Money moves as **prepare → the wallet signs the API's XDR (`kit.signTransaction`) → confirm**;
+  a confirm 503 is retried with the same signed transaction (safe, recorded once); then the plan is
+  re-read (the contract has the balance). `ownerAddress: null` = the API's simulated mode
+  (`{ amount }` only). The mock prepares its own readable "XDR" (`mocks/xdr.ts`) that the simulated
+  wallet signs. The dashboard total is `GET /savings/overview` ("contributed & saved").
+- **Test USDC (testnet):** Saji issues its own (`USDC_ISSUER`). The wallet card's setup button
+  (`useGetTestUsdc`): Friendbot if the account isn't on Testnet, the faucet's trustline transaction
+  (the wallet signs *and submits* it), then `POST /faucet/usdc` (1000, once an hour). The faucet
+  answers 404 when off (`useFaucetAvailable`), and then the UI hides it.
+- **Slot marketplace (v3, `features/slots`, `/groups/marketplace` (`?mine=1`), `/groups/marketplace/[listingId]`,
+  `/groups/[id]/{slot/list,transfers}`)**, on the API (`ListingDto` & co.; guide §6). A slot is one round
+  of `cycle.schedule` (`position` is 0-based: show `position + 1`). Flow: a member of an active, public
+  group lists it with an `askingPrice` ("0" gives it away) → outsiders request it → the seller picks one
+  (`…/select`), which opens a **`slot_transfer` proposal** (every member but the seller votes; the
+  ordinary proposal screens show it, `ProposalDto.slotTransfer`) → once executed, the buyer accepts
+  before `transfer.approval.expiresAt`: prepare (co-signed by Saji for ~2 minutes) → sign → accept.
+  The buyer joins at the seller's position, the seller leaves; records stay with whoever paid them
+  (`coveredByPreviousHolder`). Checklists come from the API (`GET /groups/{id}/slots/eligibility`,
+  `listing.buyerEligibility`; `checkLabel` words passing checks). The listing page serves every role
+  (seller, chosen buyer, member, outsider); the circle page shows `SlotPanel`. Mock rules: `mocks/slots.ts`
+  (votes run through the engine's proposals). Signing shared with savings: `features/wallet/transactions.ts`
+  (a confirm 503 is retried with the transaction's hash; 400 "prepare and sign it again" = a lapsed signature).
 - **Screens read the API's DTOs directly** (`lib/api/dto.ts`, names from the generated
   `schema.d.ts`) — no app-side mapping. A backend change shows up as type errors.
 - **Each feature's `api.ts` is the only seam**: typed functions, one per endpoint, calling
@@ -158,7 +174,7 @@ tiles, a live health dot). Import as
 
 ## Admin console (`apps/admin`)
 
-Same stack and seam as web, its own session (`saji-admin-session`). On Railway by default;
+Same stack and seam as web, its own session (`saji-admin-session`). On the live API by default;
 `NEXT_PUBLIC_API_SOURCE=mock` uses its own mock (`saji-admin-mock-db`; `src/mocks/adapter.ts`, demo
 `admin@usesaji.com` / `Password1`). Sign-in is the app's login, refused unless `role: admin`. Pages:
 overview, users (search, role), a user and their audit trail, audit log (`?action=`, live), health.

@@ -6,12 +6,21 @@ import { IoEye, IoEyeOff } from "react-icons/io5";
 import { Button } from "@repo/ui/button";
 import Link from "next/link";
 import { LINK_STEP_LABEL } from "@/features/wallet/components/LinkWalletPrompt";
-import { useAddUsdcTrustline, useLinkWallet, useUnlinkWallet, useWalletUsdc } from "@/features/wallet/hooks";
+import {
+	FAUCET_STEP_LABEL,
+	useAddUsdcTrustline,
+	useFaucetAvailable,
+	useFundTestnetAccount,
+	useGetTestUsdc,
+	useLinkWallet,
+	useUnlinkWallet,
+	useWalletUsdc,
+} from "@/features/wallet/hooks";
 import type { WalletSummaryDto } from "@/lib/api/dto";
 import { Money } from "@/components/Money";
 import { formatMoney, relative } from "@/lib/format";
 import { pageRoutes } from "@/lib/routes";
-import { USDC_FAUCET_URL, explorerAccountUrl, shortAddress } from "@/lib/stellar/config";
+import { explorerAccountUrl, shortAddress } from "@/lib/stellar/config";
 import { useNow } from "@/lib/use-now";
 
 /**
@@ -61,13 +70,11 @@ export function PayoutsCard({ wallet }: { wallet: WalletSummaryDto }) {
 	);
 }
 
-/** The linked Stellar wallet: link (connect → sign → link), its USDC, or disconnect. */
+/** The linked Stellar wallet: link (connect → sign → link), its USDC and Testnet setup, or disconnect. */
 export function LinkedWalletCard({ wallet }: { wallet: WalletSummaryDto }) {
 	const link = useLinkWallet();
 	const unlink = useUnlinkWallet();
-	const trustline = useAddUsdcTrustline();
 	const linked = wallet.wallet;
-	const { data: usdc } = useWalletUsdc(linked?.publicKey);
 	return (
 		<section className="flex flex-wrap items-center justify-between gap-4 rounded-[20px] bg-panel px-6 py-5">
 			<div className="min-w-0">
@@ -77,26 +84,7 @@ export function LinkedWalletCard({ wallet }: { wallet: WalletSummaryDto }) {
 						<a href={explorerAccountUrl(linked.publicKey)} target="_blank" rel="noreferrer" className="mt-1 block font-mono text-xs break-all hover:text-primary">
 							{linked.publicKey}
 						</a>
-						{usdc &&
-							(!usdc.funded ? (
-								<p className="mt-1 text-xs text-accent">
-									This account isn&apos;t on Stellar Testnet yet — fund it with test XLM (Friendbot) first.
-								</p>
-							) : usdc.trustline ? (
-								<p className="mt-1 text-xs text-ink-muted">
-									{formatMoney(usdc.usdc, "USDC")} in this wallet ·{" "}
-									<a href={USDC_FAUCET_URL} target="_blank" rel="noreferrer" className="text-primary">
-										Get test USDC
-									</a>
-								</p>
-							) : (
-								<p className="mt-1 flex flex-wrap items-center gap-2 text-xs text-accent">
-									This wallet can&apos;t hold USDC yet.
-									<button type="button" onClick={() => trustline.mutate(linked.publicKey)} disabled={trustline.isPending} className="text-primary underline disabled:opacity-50">
-										{trustline.isPending ? "Confirm in your wallet…" : "Enable USDC"}
-									</button>
-								</p>
-							))}
+						<TestnetSetup address={linked.publicKey} />
 					</>
 				) : (
 					<p className="mt-1 text-xs">No wallet linked yet.</p>
@@ -116,6 +104,56 @@ export function LinkedWalletCard({ wallet }: { wallet: WalletSummaryDto }) {
 			)}
 		</section>
 	);
+}
+
+const inlineAction = "text-primary underline-offset-4 hover:underline disabled:opacity-50";
+
+/**
+ * The wallet on Testnet: its USDC, and what it still needs. With the API's faucet on (testnet), one
+ * button does the whole setup — create the account (Friendbot), add Saji's test USDC, get 1,000 —
+ * and later tops it up (once an hour). With the faucet off, only the steps the wallet can do itself.
+ */
+function TestnetSetup({ address }: { address: string }) {
+	const { data: usdc } = useWalletUsdc(address);
+	const { data: faucetOn } = useFaucetAvailable(address);
+	const getUsdc = useGetTestUsdc();
+	const fund = useFundTestnetAccount();
+	const trustline = useAddUsdcTrustline();
+	if (!usdc) return null;
+	const ready = usdc.funded && usdc.trustline;
+
+	if (faucetOn) {
+		const label = getUsdc.isPending ? FAUCET_STEP_LABEL[getUsdc.step] : ready ? "Get test USDC" : "Set up wallet & get test USDC";
+		return (
+			<p className={`mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs ${ready ? "text-ink-muted" : "text-accent"}`}>
+				{ready ? `${formatMoney(usdc.usdc, "USDC")} in this wallet ·` : "This wallet isn't set up for Testnet USDC yet."}
+				<button type="button" onClick={() => getUsdc.mutate(address)} disabled={getUsdc.isPending} className={inlineAction}>
+					{label}
+				</button>
+			</p>
+		);
+	}
+	if (!usdc.funded) {
+		return (
+			<p className="mt-1 flex flex-wrap items-center gap-2 text-xs text-accent">
+				This account isn&apos;t on Stellar Testnet yet.
+				<button type="button" onClick={() => fund.mutate(address)} disabled={fund.isPending} className={inlineAction}>
+					{fund.isPending ? "Creating it…" : "Fund it with test XLM"}
+				</button>
+			</p>
+		);
+	}
+	if (!usdc.trustline) {
+		return (
+			<p className="mt-1 flex flex-wrap items-center gap-2 text-xs text-accent">
+				This wallet can&apos;t hold USDC yet.
+				<button type="button" onClick={() => trustline.mutate(address)} disabled={trustline.isPending} className={inlineAction}>
+					{trustline.isPending ? "Confirm in your wallet…" : "Enable USDC"}
+				</button>
+			</p>
+		);
+	}
+	return <p className="mt-1 text-xs text-ink-muted">{formatMoney(usdc.usdc, "USDC")} in this wallet</p>;
 }
 
 /** "Useful Insights" (`WalletSummaryDto.insights`): savings growth, active groups, next payout. */

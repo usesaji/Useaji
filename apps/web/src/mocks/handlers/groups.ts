@@ -10,6 +10,7 @@ import {
 	notify,
 	num,
 	requestToJoin,
+	roundTiming,
 	totalSavedIn,
 } from "@/mocks/engine";
 import { inviteCode, uuid } from "@/mocks/ids";
@@ -25,7 +26,8 @@ import {
 	type Ctx,
 	type Upload,
 } from "@/mocks/router";
-import type { MockGroup } from "@/mocks/types";
+import type { MockDb, MockGroup } from "@/mocks/types";
+import type { GroupsOverviewDto } from "@/lib/api/dto";
 
 /** /groups: create, edit, list, discover, invites, members (leave, remove, bans) and join requests. */
 
@@ -141,16 +143,30 @@ route("GET", "/groups", { message: "Groups retrieved" }, ({ db, user, query }) =
 	);
 });
 
-route("GET", "/groups/overview", { message: "Overview retrieved" }, ({ db, at, user }) => {
-	const mine = db.groups.filter((g) => membership(db, g.id, user.id));
-	const pending = mine.reduce((sum, g) => sum + (amountDue(db, g, user.id, at) ?? 0), 0);
+/** `GET /groups/overview`, also the `groups` half of `GET /savings/overview`. */
+export function groupsOverview(db: MockDb, userId: string, at: number): GroupsOverviewDto {
+	const mine = db.groups.filter((g) => membership(db, g.id, userId));
+	const pending = mine.reduce((sum, g) => sum + (amountDue(db, g, userId, at) ?? 0), 0);
+	const due = mine
+		.map((g) => ({ g, amount: amountDue(db, g, userId, at) }))
+		.filter((d) => d.g.status === "active" && d.amount)
+		.map(({ g, amount }) => ({
+			groupId: g.id,
+			groupName: g.name,
+			amount: money(amount!),
+			deadline: new Date(roundTiming(g, at).deadline).toISOString(),
+		}))
+		.sort((a, b) => ms(a.deadline) - ms(b.deadline));
 	return {
+		nextDue: due[0] ?? null,
 		totalPending: money(pending),
 		asset: "USDC",
-		totalSaved: money(mine.filter((g) => g.status !== "completed").reduce((sum, g) => sum + totalSavedIn(db, g.id, user.id), 0)),
+		totalSaved: money(mine.filter((g) => g.status !== "completed").reduce((sum, g) => sum + totalSavedIn(db, g.id, userId), 0)),
 		activeGroups: mine.filter((g) => g.status === "forming" || g.status === "active").length,
 	};
-});
+}
+
+route("GET", "/groups/overview", { message: "Overview retrieved" }, ({ db, at, user }) => groupsOverview(db, user.id, at));
 
 route("GET", "/groups/discover", { message: "Groups retrieved" }, ({ db, user, query }) => {
 	const search = (query.search ?? "").toLowerCase();

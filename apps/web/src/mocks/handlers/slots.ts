@@ -1,38 +1,33 @@
 import { ms } from "@/mocks/clock";
 import { groupById, membership } from "@/mocks/engine";
-import { notFound, paginate, route, validate, type Ctx } from "@/mocks/router";
+import { badRequest, notFound, paginate, route, validate, type Ctx } from "@/mocks/router";
 import {
-	canSeeTakeover,
-	cancelListing,
+	acceptListing,
+	canSeeListing,
 	createListing,
 	listingDto,
-	mySlotDto,
+	prepareAccept,
 	requestTakeover,
-	signTakeover,
-	takeoverDto,
-	voteOnTakeover,
-	withdrawTakeover,
+	selectBuyer,
+	sellerEligibility,
+	transferDto,
+	withdrawListing,
+	withdrawRequest,
 } from "@/mocks/slots";
-import type { MockDb } from "@/mocks/types";
+import type { MockDb, MockSlotListing } from "@/mocks/types";
 
 /**
- * Slot marketplace & takeover (v3, provisional): listings, takeover requests, the group's approval
- * vote, the incoming member's signature, transfer history. Not in the API yet: every route is
- * `notInApi`; the shapes are the app's proposal (Slot*Dto in lib/api/dto.ts). Rules: mocks/slots.ts.
+ * The slot marketplace (v3), as the API serves it (docs/frontend-integration.md §6): listings with
+ * an asking price, takeover requests, the seller's pick (a `slot_transfer` proposal, voted on with
+ * the proposal routes), the buyer's accept (prepare → sign → accept), and transfer history.
+ * Rules: mocks/slots.ts.
  */
 
-const newestFirst = <T extends { createdAt?: string; requestedAt?: string }>(a: T, b: T) =>
-	ms(b.createdAt ?? b.requestedAt!) - ms(a.createdAt ?? a.requestedAt!);
+const newestFirst = (a: MockSlotListing, b: MockSlotListing) => ms(b.createdAt) - ms(a.createdAt);
 
-function listing(db: MockDb, id: string) {
-	const row = db.slotListings.find((l) => l.id === id);
-	if (!row) throw notFound("Listing not found");
-	return row;
-}
-
-function takeover(db: MockDb, ctx: Pick<Ctx, "user" | "params">) {
-	const row = db.slotTakeovers.find((t) => t.id === ctx.params.id);
-	if (!row || !canSeeTakeover(db, row, ctx.user.id)) throw notFound("Takeover request not found");
+function listing(db: MockDb, ctx: Pick<Ctx, "user" | "params">) {
+	const row = db.slotListings.find((l) => l.id === ctx.params.id);
+	if (!row || !canSeeListing(db, row, ctx.user.id)) throw notFound("Listing not found");
 	return row;
 }
 
@@ -42,161 +37,101 @@ function myGroup(db: MockDb, ctx: Pick<Ctx, "user" | "params">) {
 	return group;
 }
 
-// ---------------------------------------------------------------- listings
+const AMOUNT = /^\d+(\.\d{1,7})?$/;
 
-/** The marketplace: open and pending listings from every group; `?mine=true`: the caller's own, any status. */
-route(
-	"GET",
-	"/slots/listings",
-	{ message: "Listings retrieved", notInApi: "v3 slot marketplace, not in the API yet (BACKEND-GAPS.md, Slot marketplace)" },
-	({ db, at, user, query }) => {
-		const mine = query.mine === "true";
-		const rows = db.slotListings
-			.filter((l) => (mine ? l.sellerId === user.id : l.status === "open" || l.status === "pending"))
-			.sort(newestFirst);
-		return paginate(
-			rows.map((l) => listingDto(db, l, user.id, at)),
-			query,
-		);
-	},
+/** Open listings in active public groups, newest first; `search` (group name), `minPrice`/`maxPrice` (inclusive). */
+route("GET", "/slots/marketplace", { message: "Marketplace retrieved" }, ({ db, at, user, query }) => {
+	const search = (query.search ?? "").trim().toLowerCase();
+	const min = query.minPrice;
+	const max = query.maxPrice;
+	validate([
+		[search.length <= 60, "search must be shorter than or equal to 60 characters"],
+		[min === undefined || AMOUNT.test(min), "minPrice must be a decimal string"],
+		[max === undefined || AMOUNT.test(max), "maxPrice must be a decimal string"],
+	]);
+	if (min !== undefined && max !== undefined && Number(min) > Number(max)) throw badRequest("minPrice can't be above maxPrice");
+	const rows = db.slotListings
+		.filter((l) => {
+			const group = groupById(db, l.groupId)!;
+			if (l.status !== "open" || group.status !== "active" || !group.publicDiscovery) return false;
+			if (search && !group.name.toLowerCase().includes(search)) return false;
+			const price = Number(l.askingPrice);
+			return (min === undefined || price >= Number(min)) && (max === undefined || price <= Number(max));
+		})
+		.sort(newestFirst);
+	return paginate(
+		rows.map((l) => listingDto(db, l, user.id, at)),
+		query,
+	);
+});
+
+/** Before `/slots/listings/:id` (the router takes the first match). */
+route("GET", "/slots/listings/mine", { message: "Your listings retrieved" }, ({ db, at, user }) => ({
+	selling: db.slotListings
+		.filter((l) => l.sellerId === user.id)
+		.sort(newestFirst)
+		.slice(0, 100)
+		.map((l) => listingDto(db, l, user.id, at)),
+	buying: db.slotListings
+		.filter((l) => l.everRequested.includes(user.id) || l.transfer?.buyerId === user.id || l.soldTo === user.id)
+		.sort(newestFirst)
+		.slice(0, 100)
+		.map((l) => listingDto(db, l, user.id, at)),
+}));
+
+route("GET", "/slots/listings/:id", { message: "Listing retrieved" }, (ctx) => listingDto(ctx.db, listing(ctx.db, ctx), ctx.user.id, ctx.at));
+
+route("GET", "/groups/:id/slots/eligibility", { message: "Eligibility retrieved" }, (ctx) =>
+	sellerEligibility(ctx.db, myGroup(ctx.db, ctx), ctx.user.id, ctx.at),
 );
 
-route(
-	"GET",
-	"/slots/listings/:id",
-	{ message: "Listing retrieved", notInApi: "v3 slot marketplace, not in the API yet (BACKEND-GAPS.md, Slot marketplace)" },
-	({ db, at, user, params }) => listingDto(db, listing(db, params.id!), user.id, at),
-);
+route("POST", "/groups/:id/slots/listings", { status: 201, message: "Slot listed" }, (ctx) => {
+	const l = createListing(ctx.db, myGroup(ctx.db, ctx), ctx.user.id, ctx.body.askingPrice, ctx.now);
+	return listingDto(ctx.db, l, ctx.user.id, ctx.at);
+});
 
-route(
-	"DELETE",
-	"/slots/listings/:id",
-	{ message: "Listing cancelled", notInApi: "v3 slot marketplace, not in the API yet (BACKEND-GAPS.md, Slot marketplace)" },
-	({ db, at, user, params }) => {
-		const row = listing(db, params.id!);
-		cancelListing(db, row, user.id);
-		return listingDto(db, row, user.id, at);
-	},
-);
+route("DELETE", "/groups/:id/slots/listings/mine", { message: "Listing withdrawn" }, (ctx) => {
+	withdrawListing(ctx.db, myGroup(ctx.db, ctx), ctx.user.id, ctx.now);
+	return null;
+});
 
-/** The caller's own slot in a running group (404 when they have none left to collect). */
-route(
-	"GET",
-	"/groups/:id/slot",
-	{ message: "Slot retrieved", notInApi: "v3 slot marketplace, not in the API yet (BACKEND-GAPS.md, Slot marketplace)" },
-	(ctx) => {
-		const slot = mySlotDto(ctx.db, myGroup(ctx.db, ctx), ctx.user.id, ctx.at);
-		if (!slot) throw notFound("You have no slot to collect in this group.");
-		return slot;
-	},
-);
+route("POST", "/slots/listings/:id/takeover-requests", { message: "Takeover requested" }, (ctx) => {
+	const l = listing(ctx.db, ctx);
+	requestTakeover(ctx.db, l, ctx.user.id, ctx.now);
+	return listingDto(ctx.db, l, ctx.user.id, ctx.at);
+});
 
-route(
-	"POST",
-	"/groups/:id/slot/listings",
-	{ message: "Slot listed", notInApi: "v3 slot marketplace, not in the API yet (BACKEND-GAPS.md, Slot marketplace)" },
-	(ctx) => {
-		const { db, at, now, user, body } = ctx;
-		validate([
-			[typeof body.expiresAt === "string" && !Number.isNaN(ms(body.expiresAt)), "expiresAt must be a valid ISO 8601 date string"],
-			[body.reason === undefined || typeof body.reason === "string", "reason must be a string"],
-		]);
-		const row = createListing(db, myGroup(db, ctx), user.id, { expiresAt: body.expiresAt, reason: body.reason }, now);
-		return listingDto(db, row, user.id, at);
-	},
-);
+route("DELETE", "/slots/listings/:id/takeover-requests", { message: "Takeover request withdrawn" }, (ctx) => {
+	withdrawRequest(ctx.db, listing(ctx.db, ctx), ctx.user.id);
+	return null;
+});
 
-// ---------------------------------------------------------------- takeovers
+route("POST", "/slots/listings/:id/takeover-requests/:buyerId/select", { message: "Transfer proposed" }, (ctx) => {
+	const l = listing(ctx.db, ctx);
+	selectBuyer(ctx.db, l, ctx.user.id, ctx.params.buyerId!, ctx.now);
+	return listingDto(ctx.db, l, ctx.user.id, ctx.at);
+});
 
-route(
-	"POST",
-	"/slots/listings/:id/takeovers",
-	{ message: "Takeover requested", notInApi: "v3 slot marketplace, not in the API yet (BACKEND-GAPS.md, Slot marketplace)" },
-	({ db, at, now, user, params }) => takeoverDto(db, requestTakeover(db, listing(db, params.id!), user.id, now), user.id, at),
-);
+route("POST", "/slots/listings/:id/accept/prepare", { message: "Transaction prepared" }, (ctx) => ({
+	xdr: prepareAccept(ctx.db, listing(ctx.db, ctx), ctx.user.id, ctx.at),
+}));
 
-/** `?mine=true`: requests the caller made; otherwise every request the caller can see. */
-route(
-	"GET",
-	"/slots/takeovers",
-	{
-		message: "Takeover requests retrieved",
-		notInApi: "v3 slot marketplace, not in the API yet (BACKEND-GAPS.md, Slot marketplace)",
-	},
-	({ db, at, user, query }) => {
-		const rows = db.slotTakeovers
-			.filter((t) => (query.mine === "true" ? t.toId === user.id : canSeeTakeover(db, t, user.id)))
-			.sort(newestFirst);
-		return paginate(
-			rows.map((t) => takeoverDto(db, t, user.id, at)),
-			query,
-		);
-	},
-);
+route("POST", "/slots/listings/:id/accept", { message: "Slot transferred" }, (ctx) => {
+	const l = listing(ctx.db, ctx);
+	const signed = String(ctx.body.signedXdr ?? "");
+	if (!signed) {
+		if (ctx.body.txHash) throw badRequest("The mock can't look transactions up by hash: send signedXdr.");
+		throw badRequest("signedXdr or txHash is required");
+	}
+	acceptListing(ctx.db, l, ctx.user.id, signed, ctx.now);
+	return listingDto(ctx.db, l, ctx.user.id, ctx.at);
+});
 
-route(
-	"GET",
-	"/slots/takeovers/:id",
-	{
-		message: "Takeover request retrieved",
-		notInApi: "v3 slot marketplace, not in the API yet (BACKEND-GAPS.md, Slot marketplace)",
-	},
-	(ctx) => takeoverDto(ctx.db, takeover(ctx.db, ctx), ctx.user.id, ctx.at),
-);
-
-route(
-	"POST",
-	"/slots/takeovers/:id/votes",
-	{ message: "Vote recorded", notInApi: "v3 slot marketplace, not in the API yet (BACKEND-GAPS.md, Slot marketplace)" },
-	(ctx) => {
-		validate([[ctx.body.choice === "yes" || ctx.body.choice === "no", "choice must be one of the following values: yes, no"]]);
-		const row = takeover(ctx.db, ctx);
-		voteOnTakeover(ctx.db, row, ctx.user.id, ctx.body.choice, ctx.now);
-		return takeoverDto(ctx.db, row, ctx.user.id, ctx.at);
-	},
-);
-
-/** The incoming member signs the Soroban transfer; ownership moves (the mock can't verify the signature). */
-route(
-	"POST",
-	"/slots/takeovers/:id/sign",
-	{ message: "Slot transferred", notInApi: "v3 slot marketplace, not in the API yet (BACKEND-GAPS.md, Slot marketplace)" },
-	(ctx) => {
-		validate([[String(ctx.body.signature ?? "").length >= 20, "signature from the incoming member's wallet is required"]]);
-		const row = takeover(ctx.db, ctx);
-		signTakeover(ctx.db, row, ctx.user.id, ctx.now);
-		return takeoverDto(ctx.db, row, ctx.user.id, ctx.at);
-	},
-);
-
-route(
-	"DELETE",
-	"/slots/takeovers/:id",
-	{
-		message: "Takeover request withdrawn",
-		notInApi: "v3 slot marketplace, not in the API yet (BACKEND-GAPS.md, Slot marketplace)",
-	},
-	(ctx) => {
-		const row = takeover(ctx.db, ctx);
-		withdrawTakeover(ctx.db, row, ctx.user.id, ctx.now);
-		return takeoverDto(ctx.db, row, ctx.user.id, ctx.at);
-	},
-);
-
-/** Every takeover in a group, newest first: open requests and the permanent record of transfers. */
-route(
-	"GET",
-	"/groups/:id/slot-transfers",
-	{
-		message: "Slot transfers retrieved",
-		notInApi: "v3 slot marketplace, not in the API yet (BACKEND-GAPS.md, Slot marketplace)",
-	},
-	(ctx) => {
-		const group = myGroup(ctx.db, ctx);
-		const rows = ctx.db.slotTakeovers.filter((t) => t.groupId === group.id).sort(newestFirst);
-		return paginate(
-			rows.map((t) => takeoverDto(ctx.db, t, ctx.user.id, ctx.at)),
-			ctx.query,
-		);
-	},
-);
+/** Members only, newest first. */
+route("GET", "/groups/:id/slots/transfers", { message: "Slot transfers retrieved" }, (ctx) => {
+	const group = myGroup(ctx.db, ctx);
+	return ctx.db.slotTransfers
+		.filter((t) => t.groupId === group.id)
+		.sort((a, b) => ms(b.at) - ms(a.at))
+		.map((t) => transferDto(ctx.db, t));
+});

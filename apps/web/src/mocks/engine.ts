@@ -1,6 +1,6 @@
 import { addMs, DAY, HOUR, ms } from "@/mocks/clock";
 import { anchorHash, stellarAccount, txHash, uuid } from "@/mocks/ids";
-import type { MockDb, MockDefault, MockGroup, MockMember, MockProposal, MockUser } from "@/mocks/types";
+import type { MockDb, MockDefault, MockGroup, MockMember, MockProposal, MockSlotListing, MockUser } from "@/mocks/types";
 import type { CreateProposalDto, GroupEventKind, NotificationKind, RecoveryAction } from "@/lib/api/dto";
 
 /**
@@ -98,10 +98,7 @@ export const paidThisRound = (db: MockDb, groupId: string, round: number, userId
 		(c) =>
 			c.groupId === groupId &&
 			c.round === round &&
-			(c.userId === userId ||
-				db.slotTakeovers.some(
-					(t) => t.groupId === groupId && t.status === "transferred" && t.toId === userId && t.fromId === c.userId,
-				)),
+			(c.userId === userId || db.slotTransfers.some((t) => t.groupId === groupId && t.toId === userId && t.fromId === c.userId)),
 	);
 
 /** What `userId` has paid into one group. */
@@ -459,6 +456,8 @@ const SIMILAR_OPEN = (p: MockProposal) => p.status === "active" || p.status === 
 export function createProposal(db: MockDb, group: MockGroup, proposerId: string, input: CreateProposalDto, at: string) {
 	const cycle = group.cycle;
 	if (!membership(db, group.id, proposerId)) throw new RuleError(404, "NOT_FOUND", "Group not found.");
+	if ((input.type as string) === "slot_transfer")
+		throw new RuleError(400, "BAD_REQUEST", "Slot transfers are put to a vote from the slot marketplace.");
 	if (!cycle || group.status !== "active")
 		throw new RuleError(400, "BAD_REQUEST", "Proposals open once the savings cycle has started.");
 	const open = db.proposals.filter((p) => p.groupId === group.id && SIMILAR_OPEN(p));
@@ -533,6 +532,7 @@ export function createProposal(db: MockDb, group: MockGroup, proposerId: string,
 		executionTxHash: null,
 		scheduleChange,
 		recovery,
+		slotTransfer: null,
 	};
 	db.proposals.push(proposal);
 	recordEvent(db, group.id, "proposal_created", at, proposerId, {
@@ -552,6 +552,46 @@ export function createProposal(db: MockDb, group: MockGroup, proposerId: string,
 			proposalId: proposal.id,
 		},
 	);
+	return proposal;
+}
+
+/**
+ * The seller put `buyerId` forward for their listed slot (`…/takeover-requests/{buyerId}/select`):
+ * a `slot_transfer` proposal. Every member except the seller votes, at the group's threshold.
+ */
+export function openSlotTransferVote(db: MockDb, group: MockGroup, listing: MockSlotListing, buyerId: string, at: string) {
+	const electorate = memberIds(db, group.id).filter((id) => id !== listing.sellerId);
+	const threshold = { kind: group.governance.thresholdKind, value: group.governance.thresholdValue };
+	const price = num(listing.askingPrice) === 0 ? "free" : `for ${listing.askingPrice} USDC`;
+	const proposal: MockProposal = {
+		id: uuid(),
+		groupId: group.id,
+		number: db.proposals.filter((p) => p.groupId === group.id).length + 1,
+		type: "slot_transfer",
+		description: `Transfer slot ${listing.position + 1} from ${firstName(userById(db, listing.sellerId))} to ${firstName(userById(db, buyerId))} ${price}.`,
+		proposerId: listing.sellerId,
+		threshold,
+		required: requiredVotes(threshold, electorate.length),
+		electorate,
+		votes: [],
+		status: "active",
+		createdAt: at,
+		votingEndsAt: addMs(at, group.governance.votingPeriodHours * HOUR),
+		executeBy: null,
+		executedAt: null,
+		executionTxHash: null,
+		scheduleChange: null,
+		recovery: null,
+		slotTransfer: { listingId: listing.id, buyerId },
+	};
+	db.proposals.push(proposal);
+	listing.transfer = { proposalId: proposal.id, buyerId, approvalExpiresAt: null };
+	recordEvent(db, group.id, "proposal_created", at, listing.sellerId, { proposalId: proposal.id, number: proposal.number, type: proposal.type });
+	notify(db, electorate, "proposal_created", at, `Slot transfer vote in ${group.name}`, proposal.description, {
+		groupId: group.id,
+		proposalId: proposal.id,
+	});
+	if (electorate.length === 0) evaluate(db, proposal, at);
 	return proposal;
 }
 
@@ -637,6 +677,22 @@ export function execute(db: MockDb, p: MockProposal, at: string) {
 	const hash = txHash();
 
 	switch (p.type) {
+		case "slot_transfer": {
+			// Approves the buyer: they may now accept (pay and take the slot) until the approval expires.
+			const listing = db.slotListings.find((l) => l.id === p.slotTransfer?.listingId);
+			if (!listing || listing.status !== "open" || listing.transfer?.proposalId !== p.id) throw changed();
+			listing.transfer.approvalExpiresAt = addMs(at, group.governance.executionWindowHours * HOUR);
+			notify(
+				db,
+				[listing.transfer.buyerId, listing.sellerId],
+				"slot_transfer_approved",
+				at,
+				"Slot transfer approved",
+				`${group.name} approved the transfer of slot ${listing.position + 1}. The buyer can now accept it.`,
+				{ groupId: group.id, listingId: listing.id },
+			);
+			break;
+		}
 		case "pause":
 			if (cycle.paused || group.status !== "active") throw changed();
 			cycle.paused = { since: at, proposalId: p.id };
@@ -722,6 +778,10 @@ export function proposalTitle(db: MockDb, p: MockProposal) {
 			return "Resume the group";
 		case "update_schedule":
 			return "Change the payout order";
+		case "slot_transfer": {
+			const listing = db.slotListings.find((l) => l.id === p.slotTransfer?.listingId);
+			return `Transfer slot ${(listing?.position ?? 0) + 1} to ${firstName(userById(db, p.slotTransfer?.buyerId ?? ""))}`;
+		}
 		default: {
 			const d = db.defaults.find((x) => x.id === p.recovery?.defaultId);
 			const who = firstName(userById(db, d?.userId ?? ""));

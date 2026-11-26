@@ -8,150 +8,111 @@ import { QueryState } from "@repo/ui/query-state";
 import { Card, TwoColumns } from "@/components/Cards";
 import { LinkButton } from "@/components/LinkButton";
 import { PageHeader } from "@/components/PageHeader";
-import { ChecksCard, TermsCard } from "@/features/slots/components/SlotUi";
-import { useCreateSlotListing, useMySlot } from "@/features/slots/hooks";
+import { useCycle } from "@/features/circle/hooks";
 import { useGroup } from "@/features/groups/hooks";
-import { longDate } from "@/lib/format";
+import { contributions, priceLabel, slotLabel } from "@/features/slots/copy";
+import { ChecksCard } from "@/features/slots/components/SlotUi";
+import { useCreateListing, useSellerEligibility } from "@/features/slots/hooks";
+import { formatMoney, frequencyLabel } from "@/lib/format";
 import { pageRoutes } from "@/lib/routes";
-import { currentTime, useNow } from "@/lib/use-now";
 
-const DAY = 86_400_000;
-/** A local YYYY-MM-DD for the date input. */
-const dayString = (ms: number) => {
-	const d = new Date(ms);
-	return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-};
+/** A decimal string, at most 7 decimals; "0" gives the slot away. */
+const PRICE = /^\d+(\.\d{1,7})?$/;
 
 /**
- * List a savings slot (v3 screen 04): the current owner offers their position. Listing details on
- * the left with the eligibility check; what the new owner takes over and the acknowledgement on the
- * right. The API re-checks everything (and that the listing ends before the payout round opens).
+ * List a savings slot (v3 screen 04): the API's checklist (`GET /groups/{id}/slots/eligibility`;
+ * submit stays off until every rule holds), an asking price (the design had none; the API requires
+ * one, "0" gives it away), and what a buyer would take over.
  */
 export default function ListSlotPage() {
 	const { groupId } = useParams<{ groupId: string }>();
 	const router = useRouter();
 	const r = pageRoutes.dashboardRoutes;
+	const eligibility = useSellerEligibility(groupId);
 	const group = useGroup(groupId);
-	const slot = useMySlot(groupId);
-	const create = useCreateSlotListing(groupId);
-	const now = useNow(60_000);
-	const [expires, setExpires] = useState("");
-	const [reason, setReason] = useState("");
-	const [understood, setUnderstood] = useState(false);
+	const cycle = useCycle(groupId);
+	const create = useCreateListing(groupId);
+	const [price, setPrice] = useState("");
 	const [touched, setTouched] = useState(false);
-
-	const s = slot.data;
+	const e = eligibility.data;
 	const g = group.data;
-	const expiresMs = expires ? new Date(`${expires}T23:59:59`).getTime() : NaN;
-	const dateError = !expires
-		? "Choose when the listing ends"
-		: expiresMs <= currentTime()
-			? "Choose a date in the future"
-			: expiresMs > currentTime() + 30 * DAY
-				? "A listing can run for at most 30 days"
-				: null;
+	const c = cycle.data;
+	const value = price.trim();
+	const error = !value ? "Enter an asking price (0 gives the slot away)" : !PRICE.test(value) ? "Enter an amount like 50 or 12.5" : null;
 
-	const publish = (event: React.FormEvent) => {
+	const submit = (event: React.FormEvent) => {
 		event.preventDefault();
 		setTouched(true);
-		if (dateError || !understood || !s?.canList) return;
-		create.mutate(
-			{ expiresAt: new Date(expiresMs).toISOString(), ...(reason.trim() ? { reason: reason.trim() } : {}) },
-			{ onSuccess: (listing) => router.push(r.SLOT_LISTING(listing.id)) },
-		);
+		if (error || !e?.eligible) return;
+		create.mutate(value, { onSuccess: (listing) => router.push(r.SLOT_LISTING(listing.id)) });
 	};
 
 	return (
 		<div className="w-full space-y-6 pb-10">
 			<PageHeader
-				title="List a savings slot"
-				subtitle="Offer your position to an eligible member."
+				title="List your slot"
+				subtitle="Offer your payout position to someone outside the group. The group votes on the buyer you choose."
 				back
 				backHref={r.CIRCLE(groupId)}
 			/>
-			<QueryState
-				isLoading={slot.isLoading || group.isLoading}
-				error={slot.error ?? group.error}
-				onRetry={() => void slot.refetch()}
-			/>
-			{slot.data === null && (
-				<Card>
-					<p>You have no slot left to list in this group: your payout has already been made.</p>
-				</Card>
-			)}
-			{s?.listing && (
-				<Card tone="lilac" title="Your slot is already listed">
-					<p>It&apos;s in the marketplace until {longDate(s.listing.expiresAt)}.</p>
-					<LinkButton href={r.SLOT_LISTING(s.listing.id)} className="mt-2 text-sm lg:text-base">
-						View your listing
-					</LinkButton>
-				</Card>
-			)}
-			{s && g && !s.listing && (
-				<form noValidate onSubmit={publish}>
+			<QueryState isLoading={eligibility.isLoading} error={eligibility.error} onRetry={() => void eligibility.refetch()} />
+			{e && (
+				<form noValidate onSubmit={submit}>
 					<TwoColumns
 						main={
 							<>
 								<section className="space-y-4 rounded-[20px] bg-panel p-5">
 									<div>
-										<h3 className="text-base md:text-lg">Listing details</h3>
-										<p className="mt-2 text-xs font-light text-ink-muted md:text-sm">{g.name} · Your current position</p>
+										<h3 className="text-base md:text-lg">
+											{g?.name ?? "Your group"}
+											{e.position !== null ? ` · ${slotLabel(e.position, c?.schedule.length)}` : ""}
+										</h3>
+										{g && (
+											<p className="mt-2 text-xs font-light text-ink-muted md:text-sm">
+												{formatMoney(g.contributionAmount, g.asset)} {frequencyLabel(g.frequency, g.customIntervalDays).toLowerCase()}
+												{c && e.position !== null ? ` · payout in round ${e.position + 1} · ${contributions(Math.max(0, c.schedule.length - (c.round ?? 0)))} left` : ""}
+											</p>
+										)}
 									</div>
-									<InputField name="slot" label="Savings slot" value={`Slot #${s.slotNumber} of ${s.totalRounds}`} readOnly />
 									<InputField
-										name="expires"
-										type="date"
-										label="Listing expires"
-										value={expires}
-										min={now ? dayString(now + DAY) : undefined}
-										max={now ? dayString(now + 30 * DAY) : undefined}
-										onChange={(e) => setExpires(e.target.value)}
+										name="askingPrice"
+										label={`Asking price · ${g?.asset ?? "USDC"}`}
+										inputMode="decimal"
+										placeholder="0.00"
+										value={price}
+										onChange={(event) => setPrice(event.target.value)}
 										onBlur={() => setTouched(true)}
-										error={touched ? dateError : null}
-									/>
-									<InputField
-										name="reason"
-										label="Reason for transfer (optional)"
-										placeholder="e.g. I need a more flexible savings schedule."
-										value={reason}
-										maxLength={280}
-										onChange={(e) => setReason(e.target.value)}
+										disabled={create.isPending || !e.eligible}
+										error={touched ? error : null}
+										description="What the buyer pays you when they accept. 0 gives the slot away."
 									/>
 								</section>
-								<ChecksCard title={s.canList ? "Eligibility checked" : "You can't list this slot yet"} checks={s.checks} />
+								<ChecksCard title="Before you list" checks={e.checks} />
 							</>
 						}
 						side={
 							<>
-								<TermsCard
-									title="What the new owner takes over"
-									terms={s.terms}
-									slotNumber={s.slotNumber}
-									totalRounds={s.totalRounds}
-									asset={g.asset}
-								/>
-								<Card tone="lilac" title="Before you publish">
-									<p>
-										You remain responsible for contributions until a Soroban transfer is confirmed. Group approval is required.
-									</p>
+								<Card title="Listing summary">
+									<p>Slot · {e.position !== null ? slotLabel(e.position, c?.schedule.length) : "—"}</p>
+									<p>Asking price · {!error ? priceLabel(value, g?.asset) : "—"}</p>
+									<p>Paid to · your linked wallet, when the buyer accepts</p>
 								</Card>
-								<label className="flex items-center gap-3 text-xs md:text-sm">
-									<input
-										type="checkbox"
-										checked={understood}
-										onChange={(e) => setUnderstood(e.target.checked)}
-										className="size-4 accent-primary"
-									/>
-									I understand my obligations until transfer
-								</label>
+								<Card tone="lilac" title="What happens next">
+									<p>Buyers from outside the group ask for your slot. You pick one and the other members vote.</p>
+									<p>
+										Once they approve, the buyer accepts: they pay the asking price and join at your position, and you leave the
+										group. Your past contributions stay on record under your name.
+									</p>
+									<p>You can withdraw the listing until then.</p>
+								</Card>
 								<div className="grid grid-cols-2 gap-3">
 									<Button
 										type="submit"
-										className="w-full text-sm lg:text-base"
-										disabled={!understood || !s.canList}
 										isLoading={create.isPending}
+										disabled={!e.eligible || create.isPending}
+										className="w-full text-sm lg:text-base"
 									>
-										Publish listing
+										List slot
 									</Button>
 									<LinkButton href={r.CIRCLE(groupId)} variant="soft" className="w-full text-sm lg:text-base">
 										Cancel

@@ -7,10 +7,14 @@ export const STELLAR_NETWORK_LABEL = "Stellar Testnet";
 export const HORIZON_URL = "https://horizon-testnet.stellar.org";
 /** Networks.TESTNET — what wallets sign against. */
 export const NETWORK_PASSPHRASE = "Test SDF Network ; September 2015";
-/** Circle's USDC issuer on Stellar Testnet. */
-export const USDC_ISSUER = "GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5";
-/** Where "Get test USDC" sends people. */
-export const USDC_FAUCET_URL = "https://faucet.circle.com/";
+/** Saji's own test USDC on Stellar Testnet (the API's faucet issues it; groups and savings use it). */
+export const USDC_ISSUER = "GDICTJYAZKLZPQGH6OHTLHEZJXYGAWDS5JQGC2OBANQ7NMNFCA6CRWJH";
+/** Creates Testnet accounts with test XLM. */
+export const FRIENDBOT_URL = "https://friendbot.stellar.org";
+/** The personal savings contract every plan lives in (one shared contract, a plan id per goal). */
+export const SAVINGS_CONTRACT = "CAKEMTM6ZSMCTSV4WOKXVRCVWHFUBZ46CXGPOFH7IFJOUI4RR3VN7GPZ";
+/** The slot registry contract: who holds each group's payout slots (slot transfers). */
+export const SLOT_REGISTRY_CONTRACT = "CAB6L4JEIJHJXOQSRFEW745SKXGHMS5W7IABUKRORM27TJBXCZ2S5FJY";
 
 const EXPLORER_BASE = `https://stellar.expert/explorer/${STELLAR_NETWORK}`;
 

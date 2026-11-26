@@ -1,5 +1,5 @@
 import type { ProposalDto, ProposalStatus, ProposalType, RecoveryAction } from "@/lib/api/dto";
-import { longDate } from "@/lib/format";
+import { formatMoney, longDate } from "@/lib/format";
 
 /** Labels and plain-language effects for each governance action the API supports. */
 export const ACTIONS: Record<
@@ -29,6 +29,16 @@ export const ACTIONS: Record<
 		voteFor: "I agree to the new payout order.",
 		voteAgainst: "Keep the current order.",
 		placeholder: "e.g. Swap Kemi and Emeka — Kemi's rent is due first",
+	},
+	// Opened from the slot marketplace (the seller picks a buyer), never from Create Proposal.
+	slot_transfer: {
+		label: "Transfer a payout slot",
+		subtitle: "Hand one member's payout slot to someone outside the group.",
+		effect:
+			"The buyer may then take the slot: they pay the asking price, join at the seller's payout position, and the seller leaves. Past contributions keep their owner.",
+		voteFor: "I agree to the transfer.",
+		voteAgainst: "Keep the slot with its current owner.",
+		placeholder: "",
 	},
 };
 
@@ -75,6 +85,13 @@ export function proposalTitle(p: ProposalDto, firstName: (m: ProposalDto["propos
 			return "Resume the group";
 		case "update_schedule":
 			return `Change the payout order from round ${(p.scheduleChange?.fromRound ?? 0) + 1}`;
+		case "slot_transfer": {
+			// "Transfer slot 3 from Amara to Dean for 50 USDC" — everything is on the proposal.
+			const t = p.slotTransfer;
+			if (!t) return "Transfer a payout slot";
+			const price = Number(t.price) === 0 ? "for free" : `for ${formatMoney(t.price, "USDC")}`;
+			return `Transfer slot ${t.position + 1} from ${firstName(t.seller)} to ${firstName(t.buyer)} ${price}`;
+		}
 		default: {
 			const r = p.recovery;
 			if (!r) return "Recovery";
@@ -105,6 +122,13 @@ export function resultHeadline(p: ProposalDto, groupName: string, firstName: (m:
 			return { title: `${groupName} has resumed`, body: "The approved decision was carried out. Contributions and payouts are back on schedule." };
 		case "update_schedule":
 			return { title: "Payout order updated", body: "The approved change was carried out. Past payouts are unchanged." };
+		case "slot_transfer":
+			return {
+				title: "Slot transfer approved",
+				body: p.slotTransfer
+					? `${firstName(p.slotTransfer.buyer)} can now accept slot ${p.slotTransfer.position + 1}: they pay the asking price and take ${firstName(p.slotTransfer.seller)}'s place.`
+					: "The buyer can now accept the slot.",
+			};
 		default: {
 			const who = p.recovery ? firstName(p.recovery.default.member) : "The member";
 			return { title: "Recovery complete", body: p.recovery ? RECOVERY_ACTIONS[p.recovery.action].outcome(who) : "The approved action was carried out." };

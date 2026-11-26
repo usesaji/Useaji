@@ -16,13 +16,21 @@ const FILTERS: { value: Filter; label: string }[] = [
 	{ value: "all", label: "All" },
 	{ value: "contribution", label: "Contributions" },
 	{ value: "payout", label: "Payouts" },
+	{ value: "savings_deposit", label: "Savings deposits" },
+	{ value: "savings_withdrawal", label: "Savings withdrawals" },
+	{ value: "slot_purchase", label: "Slot purchases" },
+	{ value: "slot_sale", label: "Slot sales" },
 ];
 
 const EMPTY: Record<Filter, string> = {
-	all: "No activity yet. Your contributions and payouts will show up here.",
+	all: "No activity yet. Your contributions, payouts and savings will show up here.",
 	contribution: "No contributions yet.",
 	payout: "No payouts yet.",
 	withdrawal: "No withdrawals yet.",
+	savings_deposit: "No savings deposits yet.",
+	savings_withdrawal: "No savings withdrawals yet.",
+	slot_purchase: "You haven't bought a slot yet.",
+	slot_sale: "You haven't sold a slot yet.",
 };
 
 export default function ActivityPage() {

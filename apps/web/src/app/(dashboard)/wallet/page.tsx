@@ -63,10 +63,10 @@ export default function WalletPage() {
 				<section>
 					<SectionHeader title="Personal Savings" href={pageRoutes.dashboardRoutes.SAVINGS} />
 					<div className="mt-4 grid gap-4 md:mt-6 md:grid-cols-2">
-						{plans.data.results.length === 0 ? (
+						{plans.data.length === 0 ? (
 							<NoPlansCard href={pageRoutes.dashboardRoutes.NEW_SAVINGS} />
 						) : (
-							plans.data.results
+							plans.data
 								.slice(0, 2)
 								.map((plan, i) => (
 									<PlanCard key={plan.id} plan={plan} index={i} href={pageRoutes.dashboardRoutes.SAVINGS_PLAN(plan.id)} />

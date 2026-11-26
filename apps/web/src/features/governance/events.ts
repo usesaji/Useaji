@@ -25,6 +25,10 @@ export const EVENT_GROUP: Record<GroupEventKind, EventKind> = {
 	group_paused: "governance",
 	group_resumed: "governance",
 	schedule_updated: "governance",
+	slot_listed: "savings",
+	slot_listing_closed: "savings",
+	slot_takeover_requested: "savings",
+	slot_transferred: "savings",
 };
 
 const str = (v: unknown) => (typeof v === "string" ? v : undefined);
@@ -77,5 +81,21 @@ export function describeEvent(e: GroupEventDto, name: Name, asset = "USDC"): { t
 			return { title: "Group resumed", body: "Contributions and payouts are back on schedule." };
 		case "schedule_updated":
 			return { title: "Payout order changed", body: `The order changed from round ${(num(d.fromRound) ?? 0) + 1}.` };
+		case "slot_listed": {
+			const price = str(d.askingPrice);
+			return {
+				title: "Slot listed",
+				body: `${who} listed payout slot #${(num(d.position) ?? 0) + 1}${price ? ` for ${Number(price) === 0 ? "free" : formatMoney(price, asset)}` : ""}.`,
+			};
+		}
+		case "slot_listing_closed":
+			return { title: "Slot listing closed", body: `A slot listing closed${str(d.reason) ? ` (${labelize(str(d.reason)!).toLowerCase()})` : ""}.` };
+		case "slot_takeover_requested":
+			return { title: "Takeover requested", body: `${who} asked to take over a listed slot.` };
+		case "slot_transferred":
+			return {
+				title: "Slot transferred",
+				body: `Payout slot #${(num(d.position) ?? 0) + 1} changed hands${str(d.price) && Number(d.price) > 0 ? ` for ${formatMoney(str(d.price)!, asset)}` : ""}.`,
+			};
 	}
 }

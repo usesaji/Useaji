@@ -39,9 +39,13 @@ export function notificationHref(n: NotificationDto): string | null {
 	const groupId = typeof n.data.groupId === "string" ? n.data.groupId : null;
 	const proposalId = typeof n.data.proposalId === "string" ? n.data.proposalId : null;
 	const routes = pageRoutes.dashboardRoutes;
-	// v3 slot takeovers (provisional): their notifications carry the request's id.
-	if (groupId && typeof n.data.takeoverId === "string") return routes.TAKEOVER(groupId, n.data.takeoverId);
+	const listingId = typeof n.data.listingId === "string" ? n.data.listingId : null;
 	switch (n.kind) {
+		// Slot marketplace: the listing shows each person their part (requests, Accept, the result).
+		case "slot_takeover_requested":
+		case "slot_transfer_approved":
+		case "slot_transferred":
+			return listingId ? routes.SLOT_LISTING(listingId) : groupId ? routes.CIRCLE(groupId) : null;
 		case "proposal_created":
 		case "proposal_approved":
 		case "proposal_rejected":

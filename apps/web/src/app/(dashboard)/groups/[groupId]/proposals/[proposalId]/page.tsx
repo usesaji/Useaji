@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useParams } from "next/navigation";
 import {
 	HiArrowPath,
@@ -129,6 +130,17 @@ function Details({
 				<section className="rounded-[14px] bg-primary-light px-4 py-4 md:px-5">
 					<p className="text-sm text-primary">Proposed action</p>
 					<p className="mt-1 text-xs text-primary">{effect}</p>
+					{p.slotTransfer && (
+						<div className="mt-3 space-y-1 text-xs text-primary">
+							<p>
+								Slot {p.slotTransfer.position + 1} · {firstName(p.slotTransfer.seller)} → {firstName(p.slotTransfer.buyer)}
+							</p>
+							<p>Asking price · {Number(p.slotTransfer.price) === 0 ? "Free" : formatMoney(p.slotTransfer.price, "USDC")}</p>
+							<Link href={pageRoutes.dashboardRoutes.SLOT_LISTING(p.slotTransfer.listingId)} className="inline-block underline-offset-4 hover:underline">
+								View the listing →
+							</Link>
+						</div>
+					)}
 					{p.scheduleChange && (
 						<ol className="mt-3 space-y-1 text-xs text-primary">
 							{p.scheduleChange.recipients.map((m, i) => (

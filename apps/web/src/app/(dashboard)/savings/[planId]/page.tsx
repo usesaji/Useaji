@@ -5,32 +5,33 @@ import { Button } from "@repo/ui/button";
 import { QueryState } from "@repo/ui/query-state";
 import { LinkButton } from "@/components/LinkButton";
 import { PageHeader } from "@/components/PageHeader";
-import { isLockedNow, KIND, planRules } from "@/features/savings/copy";
+import { LOCK, lockOpen, lockReason, planRules, withdrawBlocked } from "@/features/savings/copy";
 import { Card, TwoColumns } from "@/components/Cards";
-import { PlanBalanceCard, TransactionLines } from "@/features/savings/components/SavingsUi";
-import { useSavingsPlan, useSavingsTransactions } from "@/features/savings/hooks";
-import { formatMoney, longDate, shortDate } from "@/lib/format";
+import { MovementLines, PlanBalanceCard } from "@/features/savings/components/SavingsUi";
+import { useSavingsPlan } from "@/features/savings/hooks";
+import { formatMoney, longDate } from "@/lib/format";
 import { pageRoutes } from "@/lib/routes";
-import { explorerContractUrl, shortAddress, STELLAR_NETWORK_LABEL } from "@/lib/stellar/config";
+import { explorerContractUrl, SAVINGS_CONTRACT, shortAddress, STELLAR_NETWORK_LABEL } from "@/lib/stellar/config";
 import { useNow } from "@/lib/use-now";
 
 /**
- * One personal savings plan (v3 screens 09 flexible, 12 locked): balance and progress, deposit /
- * withdraw, the plan's rules, recent activity, and the wallet and contract behind it.
+ * One personal savings goal (v3 screens 09 flexible, 12 locked; the other locks follow 12): balance
+ * and progress, deposit / withdraw, the goal's rules, recent movements, and the wallet and contract
+ * behind it. `canWithdraw` (the API) decides the Withdraw button; the copy explains why.
  */
 export default function SavingsPlanPage() {
 	const { planId } = useParams<{ planId: string }>();
 	const plan = useSavingsPlan(planId);
-	const txs = useSavingsTransactions(planId, 5);
 	const now = useNow();
 	const r = pageRoutes.dashboardRoutes;
 	const p = plan.data;
-	const locked = p ? isLockedNow(p, now) : false;
-	const rows = txs.data?.results ?? [];
+	const flexible = p?.lock === "flexible";
+	const locked = p ? !lockOpen(p, now) : false;
+	const rows = (p?.movements ?? []).slice(0, 5);
 
 	return (
 		<div className="w-full space-y-6 pb-10">
-			<PageHeader title={p?.name ?? "Savings goal"} subtitle={p ? KIND[p.kind].intro : undefined} back backHref={r.SAVINGS} />
+			<PageHeader title={p?.name ?? "Savings goal"} subtitle={p ? LOCK[p.lock].intro : undefined} back backHref={r.SAVINGS} />
 			<QueryState isLoading={plan.isLoading} error={plan.error} onRetry={() => void plan.refetch()} />
 
 			{p && (
@@ -38,48 +39,47 @@ export default function SavingsPlanPage() {
 					main={
 						<>
 							<PlanBalanceCard plan={p} />
-							{p.kind === "locked" &&
+							{!flexible &&
 								(locked ? (
 									<Card tone="lilac" title="Withdrawal unavailable">
-										<p>Release date · {longDate(p.unlocksAt)}</p>
-										<p>Available to withdraw now · {formatMoney(p.withdrawable, p.asset)}</p>
-										<p>Reaching the target early does not unlock this date-based plan.</p>
+										<p>{lockReason(p)}.</p>
+										<p>Available to withdraw now · {formatMoney(0, p.asset)}</p>
+										{p.lock === "until_date" && <p>Reaching the target early does not unlock this date-based plan.</p>}
 									</Card>
 								) : (
 									<Card tone="lilac" title="Your savings are released">
-										<p>Released on {longDate(p.unlocksAt)}.</p>
-										<p>Available to withdraw now · {formatMoney(p.withdrawable, p.asset)}</p>
+										<p>
+											{p.lock === "until_target" || (p.lock === "until_date_or_target" && !(p.unlockAt && new Date(p.unlockAt).getTime() <= now))
+												? "You reached your target."
+												: `Released on ${longDate(p.unlockAt)}.`}
+										</p>
+										<p>Available to withdraw now · {formatMoney(p.balance, p.asset)}</p>
+										{p.lock === "until_target" && <p>A withdrawal that takes the balance below the target locks it again.</p>}
 									</Card>
 								))}
 							{/* As designed: flexible → Deposit · Withdraw (09); locked → the disabled Withdraw · Deposit (12). */}
 							<div className="grid grid-cols-2 gap-3">
-								{locked ? (
+								{p.canWithdraw ? (
+									<>
+										<LinkButton href={r.SAVINGS_DEPOSIT(p.id)} className="w-full text-sm lg:text-base">
+											Deposit USDC
+										</LinkButton>
+										<LinkButton href={r.SAVINGS_WITHDRAW(p.id)} variant="ghost" className="w-full text-sm lg:text-base">
+											Withdraw USDC
+										</LinkButton>
+									</>
+								) : (
 									<>
 										<Button variant="soft" disabled className="w-full text-sm lg:text-base">
-											Withdraw · Available {shortDate(p.unlocksAt)}
+											{withdrawBlocked(p, now)}
 										</Button>
 										<LinkButton href={r.SAVINGS_DEPOSIT(p.id)} className="w-full text-sm lg:text-base">
 											Deposit USDC
 										</LinkButton>
 									</>
-								) : (
-									<>
-										<LinkButton href={r.SAVINGS_DEPOSIT(p.id)} className="w-full text-sm lg:text-base">
-											Deposit USDC
-										</LinkButton>
-										{Number(p.withdrawable) > 0 ? (
-											<LinkButton href={r.SAVINGS_WITHDRAW(p.id)} variant="ghost" className="w-full text-sm lg:text-base">
-												Withdraw USDC
-											</LinkButton>
-										) : (
-											<Button variant="soft" disabled className="w-full text-sm lg:text-base">
-												Nothing to withdraw
-											</Button>
-										)}
-									</>
 								)}
 							</div>
-							{p.kind === "flexible" && (
+							{flexible && (
 								<Card title="Plan rules">
 									{planRules(p).map((rule) => (
 										<p key={rule}>{rule}</p>
@@ -90,26 +90,30 @@ export default function SavingsPlanPage() {
 					}
 					side={
 						<>
-							{p.kind === "locked" && (
+							{!flexible && (
 								<Card title="Your release condition">
-									<p>
-										Funds become withdrawable on {longDate(p.unlocksAt)}. Only your connected owner wallet can request a
-										withdrawal after that date.
-									</p>
+									{planRules(p).map((rule) => (
+										<p key={rule}>{rule}</p>
+									))}
 								</Card>
 							)}
-							<Card title={p.kind === "locked" ? "Recent deposits" : "Recent activity"}>
-								{txs.isLoading ? <p>Loading…</p> : <TransactionLines rows={rows} />}
+							<Card title="Recent activity">
+								<MovementLines rows={rows} asset={p.asset} />
 							</Card>
 							<Card tone="lilac" title="Wallet & contract">
-								<p>Owner wallet · {shortAddress(p.ownerWallet)}</p>
+								<p>Owner wallet · {p.ownerAddress ? shortAddress(p.ownerAddress) : "Simulated"}</p>
 								<p>Network · {STELLAR_NETWORK_LABEL}</p>
-								<p>Personal savings contract · {p.contractId ? shortAddress(p.contractId) : "Simulated"}</p>
+								<p>Personal savings contract · {p.ownerAddress ? shortAddress(SAVINGS_CONTRACT) : "Simulated"}</p>
+								{p.txUrl && (
+									<a href={p.txUrl} target="_blank" rel="noopener noreferrer" className="inline-block text-primary">
+										Goal created on {longDate(p.createdAt)} · View transaction
+									</a>
+								)}
 							</Card>
-							{p.contractId && (
+							{p.ownerAddress && (
 								<Button asChild variant="soft" className="w-full text-sm lg:text-base">
-									<a href={explorerContractUrl(p.contractId)} target="_blank" rel="noopener noreferrer">
-										View activity on explorer
+									<a href={explorerContractUrl(SAVINGS_CONTRACT)} target="_blank" rel="noopener noreferrer">
+										View contract on explorer
 									</a>
 								</Button>
 							)}

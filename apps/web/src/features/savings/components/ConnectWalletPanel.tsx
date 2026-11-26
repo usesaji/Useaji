@@ -10,7 +10,7 @@ import { useLinkWallet } from "@/features/wallet/hooks";
  * owner of personal savings plans. Linking is the same flow as everywhere (sign, confirm it's you).
  */
 export function ConnectWalletPanel({
-	purpose = "create a personal savings plan, deposit simulated USDC, or request a slot takeover",
+	purpose = "create a personal savings plan, deposit test USDC, or request a slot takeover",
 }: {
 	purpose?: string;
 }) {
@@ -38,7 +38,7 @@ export function ConnectWalletPanel({
 			</section>
 			<Card tone="lilac" title={<span className="text-primary">Use Stellar Testnet</span>}>
 				<p className="text-ink">
-					Switch your wallet to Testnet. Keep enough test XLM for network fees. This demo uses simulated USDC, not real funds.
+					Switch your wallet to Testnet. Keep enough test XLM for network fees. This demo uses test USDC on Testnet, not real funds: the wallet page gets you some.
 				</p>
 			</Card>
 		</div>

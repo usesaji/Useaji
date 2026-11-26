@@ -5,125 +5,128 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "@repo/ui/sonner";
 import { errorMessage } from "@/features/auth/hooks";
 import {
+	confirmDeposit,
+	confirmSavingsPlan,
+	confirmWithdrawal,
 	createSavingsPlan,
+	getSavingsOverview,
 	getSavingsPlan,
-	getSavingsSummary,
 	listSavingsPlans,
-	listSavingsTransactions,
-	recordDeposit,
-	withdrawSavings,
+	prepareDeposit,
+	prepareWithdrawal,
 } from "@/features/savings/api";
-import { isWalletDismissal, payWithWallet, signMessage, walletErrorMessage, walletFor } from "@/features/wallet/kit";
-import type { CreateSavingsPlanDto, SavingsPlanDto } from "@/lib/api/dto";
+import { isWalletDismissal, signTransaction, walletErrorMessage, walletFor } from "@/features/wallet/kit";
+import { confirmSigned, needsNewSignature, type TxPhase } from "@/features/wallet/transactions";
+import type { CreatePlanDto, MovementDto, PlanDto } from "@/lib/api/dto";
 
-export function useSavingsSummary() {
-	return useQuery({ queryKey: ["savings", "summary"], queryFn: getSavingsSummary });
+export function useSavingsOverview() {
+	return useQuery({ queryKey: ["savings", "overview"], queryFn: getSavingsOverview });
 }
 
 export function useSavingsPlans() {
-	return useQuery({ queryKey: ["savings", "plans"], queryFn: () => listSavingsPlans({ limit: 50 }) });
+	return useQuery({ queryKey: ["savings", "plans"], queryFn: listSavingsPlans });
 }
 
-/** Polled, so a locked plan opens on its release date without a reload. */
+/** Polled, so a date lock opens on its day without a reload (the contract keeps the balance). */
 export function useSavingsPlan(id: string) {
 	return useQuery({ queryKey: ["savings", "plan", id], queryFn: () => getSavingsPlan(id), refetchInterval: 60_000 });
-}
-
-export function useSavingsTransactions(id: string, limit = 10) {
-	return useQuery({
-		queryKey: ["savings", "plan", id, "transactions", limit],
-		queryFn: () => listSavingsTransactions(id, { limit }),
-	});
 }
 
 const invalidateSavings = (queryClient: ReturnType<typeof useQueryClient>) => {
 	void queryClient.invalidateQueries({ queryKey: ["savings"] });
 	void queryClient.invalidateQueries({ queryKey: ["wallet", "usdc"] });
+	void queryClient.invalidateQueries({ queryKey: ["activity"] });
 };
 
-export function useCreateSavingsPlan() {
-	const queryClient = useQueryClient();
-	return useMutation({
-		mutationFn: (input: CreateSavingsPlanDto) => createSavingsPlan(input),
-		onSuccess: (plan) => {
-			invalidateSavings(queryClient);
-			toast.success("Savings goal created", { description: `${plan.name} is ready for your first deposit.` });
-		},
-		onError: (error) => toast.error("Could not create the goal", { description: errorMessage(error) }),
-	});
-}
-
-/** Which step a deposit or withdrawal is on: drives the "Transaction status" card and the button. */
-export type MovePhase = "idle" | "wallet" | "submitting";
-
 function moveError(title: string, error: unknown) {
-	if (isWalletDismissal(error)) toast.info("Cancelled", { description: "Nothing was sent." });
+	if (isWalletDismissal(error)) toast.info("Cancelled", { description: "Nothing was signed or sent." });
+	else if (needsNewSignature(error)) toast.error(title, { description: "The signature expired before it reached Stellar. Try again to sign a fresh one." });
 	else toast.error(title, { description: walletErrorMessage(error, errorMessage(error)) });
 }
 
 /**
- * Depositing from the owner wallet: the wallet pays `amount` to the plan's contract (`plan.deposit`:
- * destination, asset, memo), then the API records it with the hash. No `deposit` = simulated: the
- * API records it directly.
+ * Create a goal. Stellar: the API returns a transaction that creates it for the linked wallet; the
+ * wallet signs; confirm. Simulated: the plan comes back created.
  */
-export function useDeposit(plan: SavingsPlanDto | undefined) {
+export function useCreateSavingsPlan(ownerAddress: string | null | undefined) {
 	const queryClient = useQueryClient();
-	const [phase, setPhase] = useState<MovePhase>("idle");
+	const [phase, setPhase] = useState<TxPhase>("idle");
 	const mutation = useMutation({
-		mutationFn: async (amount: string) => {
-			if (!plan) throw new Error("The plan hasn't loaded yet.");
+		mutationFn: async (input: CreatePlanDto) => {
 			try {
-				if (!plan.deposit) {
-					setPhase("submitting");
-					return await recordDeposit(plan.id, { amount });
+				setPhase("preparing");
+				const prepared = await createSavingsPlan(input);
+				if (!prepared.xdr) {
+					if (!prepared.plan) throw new Error("The goal wasn't created. Try again.");
+					return prepared.plan;
 				}
+				if (!ownerAddress) throw new Error("Link a wallet first: it will own this goal.");
 				setPhase("wallet");
-				const address = await walletFor(plan.ownerWallet);
-				const txHash = await payWithWallet({ ...plan.deposit, amount }, address);
-				setPhase("submitting");
-				return await recordDeposit(plan.id, { amount, txHash });
+				const signedXdr = await signTransaction(prepared.xdr, await walletFor(ownerAddress));
+				setPhase("confirming");
+				return await confirmSigned((body) => confirmSavingsPlan(prepared.planId, body), signedXdr);
 			} finally {
 				setPhase("idle");
 			}
 		},
-		onSuccess: () => {
+		onSuccess: (plan) => {
 			invalidateSavings(queryClient);
-			toast.success("Deposit confirmed", { description: "Your savings balance is updated." });
+			toast.success("Savings goal created", { description: `${plan.name} is ready for your first deposit.` });
 		},
-		onError: (error) => moveError("Could not deposit", error),
+		onError: (error) => moveError("Could not create the goal", error),
 	});
 	return { ...mutation, phase };
 }
 
-/** What the owner wallet signs to authorize a withdrawal (the backend will define the real request). */
-const withdrawalMessage = (plan: SavingsPlanDto, amount: string) =>
-	`Saji: withdraw ${amount} ${plan.asset} from "${plan.name}" (${plan.id}) to ${plan.ownerWallet}.`;
+/** What a deposit or withdrawal leaves behind: the plan as it is now, and the movement it made. */
+export interface MoveResult {
+	plan: PlanDto;
+	movement: MovementDto | null;
+}
 
-/**
- * Withdrawing to the owner wallet: the owner wallet signs, the contract checks ownership and the
- * plan's rules, then releases the funds to that wallet (never anywhere else).
- */
-export function useWithdraw(plan: SavingsPlanDto | undefined) {
+function useMove(plan: PlanDto | undefined, kind: "deposit" | "withdrawal") {
 	const queryClient = useQueryClient();
-	const [phase, setPhase] = useState<MovePhase>("idle");
+	const [phase, setPhase] = useState<TxPhase>("idle");
+	const [prepare, confirm] = kind === "deposit" ? [prepareDeposit, confirmDeposit] : [prepareWithdrawal, confirmWithdrawal];
 	const mutation = useMutation({
-		mutationFn: async (amount: string) => {
+		mutationFn: async (amount: string): Promise<MoveResult> => {
 			if (!plan) throw new Error("The plan hasn't loaded yet.");
 			try {
-				setPhase("wallet");
-				const address = await walletFor(plan.ownerWallet);
-				const signature = await signMessage(withdrawalMessage(plan, amount), address);
-				setPhase("submitting");
-				return await withdrawSavings(plan.id, { amount, signature });
+				if (!plan.ownerAddress) {
+					// Simulated mode: no chain, nothing to sign.
+					setPhase("confirming");
+					await confirm(plan.id, { amount });
+				} else {
+					// Sign with the plan's owner wallet: the API built the transaction for it.
+					const address = await walletFor(plan.ownerAddress);
+					setPhase("preparing");
+					const { xdr } = await prepare(plan.id, { amount });
+					setPhase("wallet");
+					const signedXdr = await signTransaction(xdr, address);
+					setPhase("confirming");
+					await confirmSigned((body) => confirm(plan.id, body), signedXdr);
+				}
+				// The balance comes from the contract: read the plan back rather than computing it.
+				const fresh = await getSavingsPlan(plan.id);
+				queryClient.setQueryData(["savings", "plan", plan.id], fresh);
+				const movement = fresh.movements?.find((m) => m.kind === kind) ?? null;
+				return { plan: fresh, movement };
 			} finally {
 				setPhase("idle");
 			}
 		},
 		onSuccess: () => {
 			invalidateSavings(queryClient);
-			toast.success("Withdrawal sent", { description: "The funds are on their way to your wallet." });
+			if (kind === "deposit") toast.success("Deposit confirmed", { description: "Your savings balance is updated." });
+			else toast.success("Withdrawal confirmed", { description: "The funds are back in your owner wallet." });
 		},
-		onError: (error) => moveError("Could not withdraw", error),
+		onError: (error) => moveError(kind === "deposit" ? "Could not deposit" : "Could not withdraw", error),
 	});
 	return { ...mutation, phase };
 }
+
+/** Deposit from the owner wallet into the plan: prepare → the wallet signs → the API submits. */
+export const useDeposit = (plan: PlanDto | undefined) => useMove(plan, "deposit");
+
+/** Withdraw to the owner wallet (never anywhere else). Refused while the plan's lock holds. */
+export const useWithdraw = (plan: PlanDto | undefined) => useMove(plan, "withdrawal");

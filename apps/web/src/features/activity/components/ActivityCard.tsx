@@ -9,7 +9,19 @@ export const ACTIVITY_LABEL: Record<ActivityItemDto["kind"], string> = {
 	contribution: "Contribution Sent",
 	payout: "Payout Received",
 	withdrawal: "Withdrawal Sent",
+	savings_deposit: "Savings Deposit",
+	savings_withdrawal: "Savings Withdrawal",
+	slot_purchase: "Slot Purchased",
+	slot_sale: "Slot Sold",
 };
+
+/** "in Summer Fund." / "into Travel fund." / "to your wallet." */
+function where(a: ActivityItemDto) {
+	if (a.plan) return a.kind === "savings_withdrawal" ? `from ${a.plan.name} to your wallet.` : `into ${a.plan.name}.`;
+	if (a.kind === "slot_purchase") return a.group ? `for a slot in ${a.group.name}.` : "for a slot.";
+	if (a.kind === "slot_sale") return a.group ? `for your slot in ${a.group.name}.` : "for your slot.";
+	return a.group ? `in ${a.group.name}.` : "to your wallet.";
+}
 
 export function ActivityCard({ activity }: { activity: ActivityItemDto }) {
 	return (
@@ -24,7 +36,7 @@ export function ActivityCard({ activity }: { activity: ActivityItemDto }) {
 						<span className="text-xs">{dateTime(activity.createdAt)}</span>
 					</h5>
 					<p className="mt-2 text-sm leading-[122%] font-light md:mt-4">
-						{formatMoney(activity.amount, activity.asset)} {activity.group ? `in ${activity.group.name}.` : "to your wallet."}
+						{formatMoney(activity.amount, activity.asset)} {where(activity)}
 					</p>
 					<a href={explorerTxUrl(activity.txHash)} target="_blank" rel="noreferrer" className="mt-2 flex items-center text-primary md:mt-4">
 						<span className="text-sm">View Transaction</span>

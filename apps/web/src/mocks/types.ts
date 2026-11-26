@@ -13,9 +13,8 @@ import type {
 	ProposalType,
 	RecoveryAction,
 	ResolutionDto,
-	SavingsPlanKind,
-	SlotListingStatus,
-	SlotTakeoverStatus,
+	ListingStatus,
+	SavingsLock,
 	ThresholdDto,
 } from "@/lib/api/dto";
 
@@ -186,6 +185,8 @@ export interface MockProposal {
 	executionTxHash: string | null;
 	scheduleChange: { fromRound: number; recipients: string[] } | null;
 	recovery: { defaultId: string; action: RecoveryAction; graceUntil: string | null } | null;
+	/** `slot_transfer`: the listing and the buyer being voted on. */
+	slotTransfer: { listingId: string; buyerId: string } | null;
 }
 
 export interface MockEvent {
@@ -210,16 +211,18 @@ export interface MockNotification {
 	createdAt: string;
 }
 
-/** A personal savings plan (v3). Balance and withdrawable are derived from its transactions. */
+/** A personal savings plan (v3), in the shared savings contract. Its balance comes from its movements. */
 export interface MockSavingsPlan {
 	id: string;
 	userId: string;
 	name: string;
-	kind: SavingsPlanKind;
-	targetAmount: string;
-	targetDate: string | null;
-	ownerWallet: string;
-	contractId: string;
+	lock: SavingsLock;
+	target: string;
+	unlockAt: string | null;
+	/** The wallet that created it: deposits come from it, withdrawals only ever go back to it. */
+	ownerAddress: string;
+	/** The transaction that created the plan. */
+	txHash: string;
 	createdAt: string;
 }
 
@@ -232,38 +235,46 @@ export interface MockSavingsTx {
 	createdAt: string;
 }
 
-/** A slot offered for takeover (v3). */
+/**
+ * A slot listed for sale (v3): one future round of a running group's payout schedule. Buyers ask
+ * for it; the seller puts one of them to a `slot_transfer` vote; once that executes the buyer may
+ * accept (pay the asking price and take the slot) until `transfer.approvalExpiresAt`.
+ */
 export interface MockSlotListing {
 	id: string;
 	groupId: string;
-	round: number;
 	sellerId: string;
-	reason: string | null;
+	/** 0-based round in `cycle.schedule`. */
+	position: number;
+	askingPrice: string;
+	status: ListingStatus;
 	createdAt: string;
-	expiresAt: string;
-	status: SlotListingStatus;
+	closedAt: string | null;
+	/** Why an invalidated listing closed (`slot_listing_closed` event). */
+	closeReason: string | null;
+	/** Pending requests, oldest first. */
+	requests: { buyerId: string; requestedAt: string }[];
+	/** The buyer the seller put to a vote. `approvalExpiresAt` is set once the vote executes. */
+	transfer: { proposalId: string; buyerId: string; approvalExpiresAt: string | null } | null;
+	/** Everyone who ever requested it (for "My listings & requests" → buying). */
+	everRequested: string[];
+	soldTo: string | null;
 }
 
-/** A takeover request: its approval vote and, once signed, the transfer itself. */
-export interface MockTakeover {
+/** A completed slot transfer: who handed slot `position` to whom, for how much. */
+export interface MockSlotTransfer {
 	id: string;
-	listingId: string;
 	groupId: string;
-	round: number;
+	listingId: string;
+	proposalId: string;
 	fromId: string;
 	toId: string;
-	toWallet: string;
-	requestedAt: string;
-	/** Members allowed to review, fixed at request: everyone but the current owner. */
-	electorate: string[];
-	required: number;
-	votes: MockVote[];
-	votingEndsAt: string;
-	status: SlotTakeoverStatus;
-	approvedAt: string | null;
-	signBy: string | null;
-	transferredAt: string | null;
-	txHash: string | null;
+	position: number;
+	price: string;
+	/** The round open when it moved. */
+	effectiveRound: number;
+	txHash: string;
+	at: string;
 }
 
 export interface MockDb {
@@ -284,8 +295,10 @@ export interface MockDb {
 	notifications: MockNotification[];
 	/** USDC held by each simulated wallet (public key → decimal string). */
 	walletBalances: Record<string, string>;
+	/** Test USDC faucet: when each wallet last got some (one grant per wallet per hour). */
+	faucetGrants: Record<string, string>;
 	savingsPlans: MockSavingsPlan[];
 	savingsTransactions: MockSavingsTx[];
 	slotListings: MockSlotListing[];
-	slotTakeovers: MockTakeover[];
+	slotTransfers: MockSlotTransfer[];
 }

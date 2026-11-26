@@ -176,8 +176,12 @@ function toApiError(error: unknown) {
 	if (error instanceof ApiError || !axios.isAxiosError(error)) return error;
 	const status = error.response?.status;
 	const body = error.response?.data as ErrorBody | undefined;
-	if (status === 429) return new ApiError(rateLimitMessage(error.response?.headers["retry-after"]), status, body?.code);
 	const raw = Array.isArray(body?.message) ? body.message[0] : body?.message;
+	// The generic rate limit gets our wording; a limit the API explains (the faucet's hourly one) keeps its own.
+	if (status === 429) {
+		const own = raw && !/throttler|too many requests/i.test(raw) ? raw : null;
+		return new ApiError(own ?? rateLimitMessage(error.response?.headers["retry-after"]), status, body?.code);
+	}
 	// Validation failures carry the field messages in `details`; the first one says more than "Validation failed".
 	const detail = Array.isArray(body?.details) && typeof body.details[0] === "string" ? body.details[0] : undefined;
 	const message =

@@ -1,126 +1,52 @@
 "use client";
 
-import { useState } from "react";
-import Link from "next/link";
+import { useDeferredValue, useState } from "react";
 import { useSearchParams } from "next/navigation";
+import { cn } from "@repo/ui/lib/utils";
+import { Pager } from "@repo/ui/pager";
 import { QueryState } from "@repo/ui/query-state";
 import { Card, TwoColumns } from "@/components/Cards";
 import { LinkButton } from "@/components/LinkButton";
 import { PageHeader } from "@/components/PageHeader";
 import { HOW_TAKEOVER_WORKS } from "@/features/slots/copy";
-import { ListingCard, TakeoverPill } from "@/features/slots/components/SlotUi";
-import { useMyTakeovers, useSlotListings } from "@/features/slots/hooks";
-import { longDate } from "@/lib/format";
+import { ListingCard } from "@/features/slots/components/SlotUi";
+import { useMarketplace, useMyListings } from "@/features/slots/hooks";
+import type { ListingDto } from "@/lib/api/dto";
 import { pageRoutes } from "@/lib/routes";
 
-const AMOUNTS = [
-	{ value: "all", label: "All amounts", test: () => true },
-	{ value: "small", label: "Up to 50 USDC", test: (n: number) => n <= 50 },
-	{ value: "mid", label: "50 – 200 USDC", test: (n: number) => n > 50 && n <= 200 },
-	{ value: "large", label: "Over 200 USDC", test: (n: number) => n > 200 },
+/** Asking-price bands, sent as `minPrice` / `maxPrice` (inclusive; the server filters across all pages). */
+const PRICES = [
+	{ value: "all", label: "Any asking price" },
+	{ value: "free", label: "Free", maxPrice: "0" },
+	{ value: "small", label: "Up to 50 USDC", maxPrice: "50" },
+	{ value: "mid", label: "50 – 200 USDC", minPrice: "50", maxPrice: "200" },
+	{ value: "large", label: "Over 200 USDC", minPrice: "200" },
 ] as const;
+
+type Price = (typeof PRICES)[number]["value"];
 
 const field =
 	"h-10.75 w-full rounded-[900px] border border-neutral-light-hover bg-white px-6 text-base outline-none focus:border-primary md:h-12";
 
+const r = pageRoutes.dashboardRoutes;
+
 /**
- * Savings slot marketplace (v3 screen 03): slots members have listed for takeover, across groups.
- * `?mine=1`: the caller's own listings and the requests they've made.
+ * Savings slot marketplace (v3 screen 03): open listings across public groups, searched and
+ * filtered by the API. `?mine=1`: "My listings & requests" — slots you sell and slots you asked
+ * for, were chosen for or bought, in any status (`GET /slots/listings/mine`).
  */
 export default function MarketplacePage() {
 	const mine = useSearchParams().get("mine") === "1";
-	const r = pageRoutes.dashboardRoutes;
-	const listings = useSlotListings(mine);
-	const requests = useMyTakeovers();
-	const [query, setQuery] = useState("");
-	const [amount, setAmount] = useState<(typeof AMOUNTS)[number]["value"]>("all");
-
-	const test = AMOUNTS.find((a) => a.value === amount)!.test;
-	const rows = (listings.data?.results ?? []).filter(
-		(l) => l.group.name.toLowerCase().includes(query.trim().toLowerCase()) && test(Number(l.terms.contributionAmount)),
-	);
-	const myRequests = requests.data?.results ?? [];
-
 	return (
 		<div className="w-full space-y-6 pb-10">
 			<PageHeader
 				title={mine ? "My listings & requests" : "Savings slot marketplace"}
-				subtitle={
-					mine ? "Slots you've listed and slots you've asked for." : "Take over a position that works for your savings journey."
-				}
+				subtitle={mine ? "Slots you've listed and slots you've asked for." : "Take over a position that works for your savings journey."}
 				back
 				backHref={mine ? r.MARKETPLACE : r.GROUPS}
 			/>
 			<TwoColumns
-				main={
-					<>
-						{!mine && (
-							<div className="space-y-4">
-								<label className="block space-y-2">
-									<span className="text-sm font-light">Search slots</span>
-									<input
-										value={query}
-										onChange={(e) => setQuery(e.target.value)}
-										placeholder="Search by group name"
-										className={field}
-									/>
-								</label>
-								<label className="block space-y-2">
-									<span className="text-sm font-light">Contribution amount</span>
-									<select value={amount} onChange={(e) => setAmount(e.target.value as typeof amount)} className={field}>
-										{AMOUNTS.map((a) => (
-											<option key={a.value} value={a.value}>
-												{a.label}
-											</option>
-										))}
-									</select>
-								</label>
-							</div>
-						)}
-						{mine && <h3 className="text-base md:text-lg">Your listings</h3>}
-						<QueryState isLoading={listings.isLoading} error={listings.error} onRetry={() => void listings.refetch()} />
-						{listings.data && rows.length === 0 && (
-							<Card>
-								<p>
-									{mine
-										? "You haven't listed a slot. Open one of your running groups and choose “List your slot”."
-										: query || amount !== "all"
-											? "No slots match. Try another search or amount."
-											: "No slots are listed right now. Check back soon."}
-								</p>
-							</Card>
-						)}
-						{rows.map((l, i) => (
-							<ListingCard key={l.id} listing={l} index={i} href={r.SLOT_LISTING(l.id)} />
-						))}
-
-						{mine && (
-							<>
-								<h3 className="pt-2 text-base md:text-lg">Your takeover requests</h3>
-								{requests.data && myRequests.length === 0 && (
-									<Card>
-										<p>You haven&apos;t asked to take over a slot yet.</p>
-									</Card>
-								)}
-								{myRequests.map((t) => (
-									<Link
-										key={t.id}
-										href={r.SLOT_LISTING(t.listingId)}
-										className="block rounded-[20px] bg-panel p-5 transition hover:bg-neutral-comment"
-									>
-										<div className="flex items-start justify-between gap-3">
-											<p className="min-w-0 truncate text-base md:text-lg">
-												{t.group.name} · Slot #{t.slotNumber}
-											</p>
-											<TakeoverPill status={t.status} />
-										</div>
-										<p className="mt-2 text-xs font-light text-ink-muted md:text-sm">Requested {longDate(t.requestedAt)}</p>
-									</Link>
-								))}
-							</>
-						)}
-					</>
-				}
+				main={mine ? <MyListings /> : <Browse />}
 				side={
 					<>
 						<Card tone="lilac" title="How takeover works">
@@ -133,14 +59,124 @@ export default function MarketplacePage() {
 							</ol>
 						</Card>
 						<Card title="Ownership stays protected">
-							<p>One owner per slot. Contribution and payout records remain unchanged.</p>
+							<p>One slot per person per group. Past contributions and payouts keep the name of whoever made them.</p>
 						</Card>
 						<LinkButton href={mine ? r.MARKETPLACE : r.MY_LISTINGS} variant="soft" className="w-full text-sm lg:text-base">
-							{mine ? "All listings" : "My listings"}
+							{mine ? "All listings" : "My listings & requests"}
 						</LinkButton>
 					</>
 				}
 			/>
 		</div>
+	);
+}
+
+function Browse() {
+	const [query, setQuery] = useState("");
+	const [price, setPrice] = useState<Price>("all");
+	const [page, setPage] = useState(1);
+	const search = useDeferredValue(query.trim().slice(0, 60));
+	const band = PRICES.find((p) => p.value === price)!;
+	const listings = useMarketplace({
+		page,
+		limit: 10,
+		...(search ? { search } : {}),
+		...("minPrice" in band ? { minPrice: band.minPrice } : {}),
+		...("maxPrice" in band ? { maxPrice: band.maxPrice } : {}),
+	});
+	const rows = listings.data?.results ?? [];
+
+	return (
+		<>
+			<div className="space-y-4">
+				<label className="block space-y-2">
+					<span className="text-sm font-light">Search slots</span>
+					<input
+						value={query}
+						maxLength={60}
+						onChange={(e) => {
+							setQuery(e.target.value);
+							setPage(1);
+						}}
+						placeholder="Search by group name"
+						className={field}
+					/>
+				</label>
+				<label className="block space-y-2">
+					<span className="text-sm font-light">Asking price</span>
+					<select
+						value={price}
+						onChange={(e) => {
+							setPrice(e.target.value as Price);
+							setPage(1);
+						}}
+						className={field}
+					>
+						{PRICES.map((p) => (
+							<option key={p.value} value={p.value}>
+								{p.label}
+							</option>
+						))}
+					</select>
+				</label>
+			</div>
+			<QueryState isLoading={listings.isLoading} error={listings.error} onRetry={() => void listings.refetch()} />
+			{listings.data && rows.length === 0 && (
+				<Card>
+					<p>{search || price !== "all" ? "No slots match. Try another search or price." : "No slots are listed right now. Check back soon."}</p>
+				</Card>
+			)}
+			{rows.map((l, i) => (
+				<ListingCard key={l.id} listing={l} index={i} href={r.SLOT_LISTING(l.id)} />
+			))}
+			{rows.length > 0 && <Pager meta={listings.data?.paginationMeta} onPageChange={setPage} className="flex justify-center" />}
+		</>
+	);
+}
+
+/** Two tabs: what you sell, what you asked for. */
+function MyListings() {
+	const mine = useMyListings();
+	const [tab, setTab] = useState<"selling" | "buying">("selling");
+	const rows: ListingDto[] = mine.data?.[tab] ?? [];
+	const tabs = [
+		{ value: "selling", label: "Selling", count: mine.data?.selling.length },
+		{ value: "buying", label: "Requests", count: mine.data?.buying.length },
+	] as const;
+
+	return (
+		<>
+			<div className="flex gap-2" role="tablist">
+				{tabs.map((t) => (
+					<button
+						key={t.value}
+						type="button"
+						role="tab"
+						aria-selected={tab === t.value}
+						onClick={() => setTab(t.value)}
+						className={cn(
+							"rounded-full px-5 py-2 text-sm transition",
+							tab === t.value ? "bg-primary text-white" : "bg-neutral-comment text-neutral-dark hover:bg-primary-light",
+						)}
+					>
+						{t.label}
+						{t.count ? ` · ${t.count}` : ""}
+					</button>
+				))}
+			</div>
+			<QueryState isLoading={mine.isLoading} error={mine.error} onRetry={() => void mine.refetch()} />
+			{mine.data && rows.length === 0 && (
+				<Card>
+					<p>
+						{tab === "selling"
+							? "You haven't listed a slot. Open one of your running groups and choose “List your slot”."
+							: "You haven't asked to take over a slot yet."}
+					</p>
+				</Card>
+			)}
+			{rows.map((l, i) => (
+				<ListingCard key={l.id} listing={l} index={i} href={r.SLOT_LISTING(l.id)} />
+			))}
+		</>
 	);
 }
