@@ -13,6 +13,9 @@ import type {
 	ProposalType,
 	RecoveryAction,
 	ResolutionDto,
+	SavingsPlanKind,
+	SlotListingStatus,
+	SlotTakeoverStatus,
 	ThresholdDto,
 } from "@/lib/api/dto";
 
@@ -207,6 +210,62 @@ export interface MockNotification {
 	createdAt: string;
 }
 
+/** A personal savings plan (v3). Balance and withdrawable are derived from its transactions. */
+export interface MockSavingsPlan {
+	id: string;
+	userId: string;
+	name: string;
+	kind: SavingsPlanKind;
+	targetAmount: string;
+	targetDate: string | null;
+	ownerWallet: string;
+	contractId: string;
+	createdAt: string;
+}
+
+export interface MockSavingsTx {
+	id: string;
+	planId: string;
+	kind: "deposit" | "withdrawal";
+	amount: string;
+	txHash: string;
+	createdAt: string;
+}
+
+/** A slot offered for takeover (v3). */
+export interface MockSlotListing {
+	id: string;
+	groupId: string;
+	round: number;
+	sellerId: string;
+	reason: string | null;
+	createdAt: string;
+	expiresAt: string;
+	status: SlotListingStatus;
+}
+
+/** A takeover request: its approval vote and, once signed, the transfer itself. */
+export interface MockTakeover {
+	id: string;
+	listingId: string;
+	groupId: string;
+	round: number;
+	fromId: string;
+	toId: string;
+	toWallet: string;
+	requestedAt: string;
+	/** Members allowed to review, fixed at request: everyone but the current owner. */
+	electorate: string[];
+	required: number;
+	votes: MockVote[];
+	votingEndsAt: string;
+	status: SlotTakeoverStatus;
+	approvedAt: string | null;
+	signBy: string | null;
+	transferredAt: string | null;
+	txHash: string | null;
+}
+
 export interface MockDb {
 	version: number;
 	users: MockUser[];
@@ -225,4 +284,8 @@ export interface MockDb {
 	notifications: MockNotification[];
 	/** USDC held by each simulated wallet (public key → decimal string). */
 	walletBalances: Record<string, string>;
+	savingsPlans: MockSavingsPlan[];
+	savingsTransactions: MockSavingsTx[];
+	slotListings: MockSlotListing[];
+	slotTakeovers: MockTakeover[];
 }

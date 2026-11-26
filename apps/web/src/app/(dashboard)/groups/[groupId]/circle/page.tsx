@@ -19,6 +19,7 @@ import { OnboardingModal } from "@/features/circle/components/OnboardingModal";
 import { useContribute, useCycle, useSettleDefault } from "@/features/circle/hooks";
 import { PAY_PHASE_LABEL } from "@/features/circle/pay";
 import { ProposalCard } from "@/features/governance/components/ProposalCard";
+import { SlotPanel } from "@/features/slots/components/SlotPanel";
 import { describeEvent } from "@/features/governance/events";
 import { useHistory, useProposals } from "@/features/governance/hooks";
 import { useGroup } from "@/features/groups/hooks";
@@ -215,6 +216,8 @@ export default function CirclePage() {
 						)
 					)}
 				</div>
+
+				{!completed && <SlotPanel groupId={groupId} asset={g.asset} />}
 
 				<div className="grid items-start gap-6 lg:grid-cols-2">
 					<section className="space-y-3">

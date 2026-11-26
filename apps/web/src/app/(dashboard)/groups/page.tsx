@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { IoReload } from "react-icons/io5";
 import { CreateGroupFloatBtn } from "@/features/groups/components/CreateGroupFloatBtn";
 import { DiscoverGroups } from "@/features/groups/components/DiscoverGroups";
@@ -8,6 +9,7 @@ import { GroupFilter, type GroupFilterValue } from "@/features/groups/components
 import { GroupList } from "@/features/groups/components/GroupList";
 import { GroupStats } from "@/features/groups/components/GroupStats";
 import { useGroups } from "@/features/groups/hooks";
+import { pageRoutes } from "@/lib/routes";
 
 const PAGE_SIZE = 4;
 
@@ -21,6 +23,12 @@ export default function GroupsPage() {
 			<section className="flex items-center justify-between gap-3">
 				<h2 className="text-[28px] font-light md:text-[34px] md:font-normal">My Groups</h2>
 				<div className="flex items-center gap-2">
+					<Link
+						href={pageRoutes.dashboardRoutes.MARKETPLACE}
+						className="flex h-10 items-center rounded-full bg-primary-light px-4 text-xs text-primary transition hover:bg-primary hover:text-white md:h-11 md:text-sm"
+					>
+						Slot marketplace
+					</Link>
 					<GroupFilter
 						value={filter}
 						onChange={(value) => {

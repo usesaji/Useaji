@@ -6,7 +6,7 @@ import { HiOutlinePlusSmall } from "react-icons/hi2";
 import { Logo } from "@repo/ui/logo";
 import { Avatar } from "@repo/ui/avatar";
 import { LinkButton } from "@/components/LinkButton";
-import { isActivePath, navItems } from "@/components/layouts/nav";
+import { isNavActive, navItems } from "@/components/layouts/nav";
 import { useAccount } from "@/features/auth/hooks";
 import { initials } from "@/lib/format";
 import { pageRoutes } from "@/lib/routes";
@@ -26,8 +26,9 @@ export function Navbar() {
 				<div className="flex h-full flex-col justify-between border-r border-r-neutral-light-hover">
 					<nav className="mt-15 pl-7.5" aria-label="Main">
 						<ul className="flex flex-col justify-between gap-10 bg-white">
-							{navItems.map(({ href, label, Icon }) => {
-								const active = isActivePath(pathname, href);
+							{navItems.map((item) => {
+								const { href, label, Icon } = item;
+								const active = isNavActive(pathname, item);
 								return (
 									<li key={href}>
 										<Link href={href} className="flex items-center" aria-current={active ? "page" : undefined}>
@@ -64,8 +65,9 @@ export function Navbar() {
 			<aside className="fixed inset-x-0 bottom-0 z-50 bg-white lg:hidden">
 				<nav className="custom-container py-3.5 sm:py-5" aria-label="Main">
 					<ul className="flex items-center justify-between">
-						{navItems.map(({ href, label, Icon }) => {
-							const active = isActivePath(pathname, href);
+						{navItems.map((item) => {
+							const { href, label, Icon } = item;
+							const active = isNavActive(pathname, item);
 							return (
 								<li key={href}>
 									<Link href={href} className="flex items-center space-y-1 max-lg:flex-col" aria-current={active ? "page" : undefined}>

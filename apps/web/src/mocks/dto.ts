@@ -15,7 +15,16 @@ import {
 	userById,
 } from "@/mocks/engine";
 import { explorerTx } from "@/mocks/ids";
-import type { MockDb, MockDefault, MockEvent, MockGroup, MockProposal, MockUser } from "@/mocks/types";
+import type {
+	MockDb,
+	MockDefault,
+	MockEvent,
+	MockGroup,
+	MockProposal,
+	MockSavingsPlan,
+	MockSavingsTx,
+	MockUser,
+} from "@/mocks/types";
 import type {
 	AccountDto,
 	CycleDto,
@@ -27,6 +36,8 @@ import type {
 	MemberDto,
 	MemberPreviewDto,
 	ProposalDto,
+	SavingsPlanDto,
+	SavingsTransactionDto,
 } from "@/lib/api/dto";
 
 /** Mock rows → the Railway API's DTOs (docs/openapi.json), field for field. */
@@ -325,4 +336,44 @@ export function totalSaved(db: MockDb, userId: string) {
 /** Every payout recorded for `userId` (each went straight to their payout address). */
 export function totalPaidOut(db: MockDb, userId: string) {
 	return db.payouts.filter((p) => p.userId === userId).reduce((sum, p) => sum + num(p.amount), 0);
+}
+
+// ---------------------------------------------------------------- personal savings (v3, provisional)
+
+/** Deposits minus withdrawals. */
+export function planBalance(db: MockDb, planId: string) {
+	return db.savingsTransactions
+		.filter((t) => t.planId === planId)
+		.reduce((sum, t) => sum + (t.kind === "deposit" ? num(t.amount) : -num(t.amount)), 0);
+}
+
+/** Locked plans release everything on `targetDate`; flexible plans release the balance any time. */
+export function planWithdrawable(db: MockDb, p: MockSavingsPlan, at: number) {
+	const locked = p.kind === "locked" && p.targetDate !== null && ms(p.targetDate) > at;
+	return locked ? 0 : planBalance(db, p.id);
+}
+
+export function savingsPlanDto(db: MockDb, p: MockSavingsPlan, at: number): SavingsPlanDto {
+	const balance = planBalance(db, p.id);
+	return {
+		id: p.id,
+		name: p.name,
+		kind: p.kind,
+		asset: "USDC",
+		targetAmount: p.targetAmount,
+		targetDate: p.targetDate,
+		balance: money(balance),
+		withdrawable: money(planWithdrawable(db, p, at)),
+		unlocksAt: p.kind === "locked" ? p.targetDate : null,
+		progressPercent: Math.min(100, Math.floor((balance / Math.max(num(p.targetAmount), 0.01)) * 100)),
+		ownerWallet: p.ownerWallet,
+		contractId: p.contractId,
+		deposit: { destination: p.contractId, assetCode: "USDC", assetIssuer: null, memo: `saji sv ${p.id.slice(0, 8)}` },
+		status: "active",
+		createdAt: p.createdAt,
+	};
+}
+
+export function savingsTxDto(t: MockSavingsTx): SavingsTransactionDto {
+	return { id: t.id, planId: t.planId, kind: t.kind, amount: t.amount, asset: "USDC", txHash: t.txHash, createdAt: t.createdAt };
 }

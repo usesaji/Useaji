@@ -1,0 +1,70 @@
+SAJI Project Brief | 3.0
+Overview
+SAJI is a digital community savings platform built around rotating savings groups, commonly known as ajo or esusu.
+Previous versions established group savings, Soroban-powered contributions and payouts, and group governance and recovery functionality.
+Version 3.0 introduces savings slot trading and takeover, allowing members to transfer their positions under agreed conditions, alongside personal savings functionality for individuals who want to save independently of a group.
+Sprint Goal
+Extend SAJI with a Soroban-powered savings slot transfer system and individual savings plans using simulated USDC on Stellar Testnet.
+Core Features
+1. Savings Slot Marketplace
+* Allow eligible group members to list savings slots for takeover.
+* Display available slots and their contribution obligations.
+* Show payout position and remaining schedule.
+* Allow interested members to request a takeover.
+2. Slot Transfer & Approval
+* Verify eligibility of incoming members.
+* Apply group approval conditions.
+* Transfer slot ownership through Soroban.
+* Preserve contribution and payout history.
+* Prevent duplicate ownership of the same slot.
+3. Personal Savings Plans
+* Create individual savings goals.
+* Set target amounts.
+* Configure flexible or locked savings plans.
+* View savings progress and balances.
+4. USDC Personal Savings
+* Connect non-custodial Stellar wallets.
+* Deposit simulated USDC into personal savings contracts.
+* Track deposits and withdrawals.
+* Verify transactions on Stellar Testnet.
+5. Withdrawal Rules
+* Allow withdrawals from flexible savings plans.
+* Enforce withdrawal restrictions on locked savings plans.
+* Release funds when the configured conditions are satisfied.
+* Prevent unauthorized withdrawals.
+Key Screens for Design
+* Savings dashboard
+* Group savings details
+* Savings slot marketplace
+* List a savings slot
+* Slot takeover request
+* Group approval
+* Slot transfer history
+* Create personal savings goal
+* Personal savings details
+* Deposit and withdrawal
+Technical Requirements
+* Extend SAJI's existing savings group infrastructure.
+* Soroban contract functionality for slot transfer and ownership.
+* Simulated USDC personal savings contracts on Stellar Testnet.
+* Non-custodial wallet integration.
+* Verification of contribution obligations and withdrawal conditions.
+* Verifiable Stellar Testnet contract interactions.
+Definition of Done
+The MVP is complete when:
+* Eligible members can list savings slots.
+* Available slots display their contribution and payout details.
+* Interested members can request a slot takeover.
+* Incoming members are checked against eligibility conditions.
+* Required group approvals are enforced.
+* Soroban transfers slot ownership after approval.
+* Existing contribution and payout records remain intact.
+* Duplicate slot ownership is rejected.
+* Users can create personal savings goals.
+* Users can select flexible or locked savings plans.
+* Users can deposit simulated USDC.
+* Savings balances and progress update correctly.
+* Flexible savings withdrawals work.
+* Locked savings withdrawal restrictions are enforced.
+* Relevant transactions are verifiable on Stellar Testnet.
+* A demo video, GitHub repository, and Soroban contract addresses are submitted.

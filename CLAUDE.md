@@ -2,9 +2,10 @@
 
 # Saji
 
-Community savings (ajo / esusu) on Stellar Testnet. This sprint (MVP 2): group governance —
-proposals, votes, approval thresholds, executed decisions — and missed-contribution recovery.
-**Scope and screen map: `docs/PLAN.md`. What the backend still needs: `docs/BACKEND-GAPS.md`.**
+Community savings (ajo / esusu) on Stellar Testnet. MVP 2: group governance —
+proposals, votes, approval thresholds, executed decisions — and missed-contribution recovery. Now
+v3 (`docs/v3-brief.txt`): slot marketplace / takeover and personal savings plans.
+**Scope and screen map: `docs/PLAN.md` (MVP 2, then v3). What the backend still needs: `docs/BACKEND-GAPS.md`.**
 Structure mirrors `../blockstag-v2`; when in doubt about a convention, check how it did it.
 
 ## Monorepo
@@ -22,7 +23,7 @@ docs/           brief, OpenAPI spec copy, plan, backend gaps
 
 `pnpm dev` (all three) · `pnpm build` · `pnpm check-types` · `pnpm lint` (UI package: `--max-warnings 0`)
 · `pnpm format` (prettier: tabs, width 130). Web only: `pnpm --filter web test:mock` (the MVP 2 journey
-through the real client and the mock, 64 checks) · `check:api` (app calls vs `docs/openapi.json`) ·
+and v3 (slots, personal savings) through the real client and the mock, 105 checks) · `check:api` (app calls vs `docs/openapi.json`) ·
 `api:types` (regenerate `src/lib/api/schema.d.ts` from the spec).
 
 ## Deployment (Vercel Services)
@@ -59,8 +60,19 @@ toasts (Saji-styled, `@repo/ui/sonner`), Base UI / Radix primitives, `@creit.tec
 - **Everyone pays every round, the round's recipient included**; the payout is the sum paid that round.
   Amounts (late fee included) come from the API (`myAmountDue`, `DefaultDto.amount`), never computed.
 - **Payouts go straight to `WalletSummaryDto.payoutAddress`** (the primary withdraw destination, else
-  the linked wallet). SAJI holds no balance: there is no withdraw flow, only "Paid out to you" and
+  the linked wallet). Groups hold no balance for you: no group withdraw flow, only "Paid out to you" and
   where payouts go (`/profile/withdraw-info`, "Payout Addresses").
+- **Personal savings (v3, `features/savings`, `/savings/*`)** are the exception: each plan's savings
+  contract holds a balance. Deposits come from the plan's `ownerWallet`; withdrawals are signed by it
+  and only ever go back to it; a locked plan releases nothing before `unlocksAt`. **Provisional:** the
+  API has no `/savings` routes yet. The DTOs are hand-written in `lib/api/dto.ts` (marked PROVISIONAL)
+  and served by the mock only (`notInApi`); the proposed contract is in BACKEND-GAPS.
+- **Slot marketplace (v3, `features/slots`, `/groups/marketplace`, `/groups/[id]/{slot/list,takeovers,transfers}`)**,
+  also provisional (same DTO section, rules in `mocks/slots.ts`). A slot is one round of
+  `cycle.schedule`. Takeover: list → an outsider requests → every member but the seller votes (the
+  group's threshold) → the incoming member signs → the schedule entry moves, they join, the seller
+  leaves. One slot per person per group. Records stay with whoever paid them; `paidThisRound` credits
+  a round the previous owner already paid. The circle page shows it all in `SlotPanel`.
 - **Screens read the API's DTOs directly** (`lib/api/dto.ts`, names from the generated
   `schema.d.ts`) — no app-side mapping. A backend change shows up as type errors.
 - **Each feature's `api.ts` is the only seam**: typed functions, one per endpoint, calling

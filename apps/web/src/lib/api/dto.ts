@@ -88,6 +88,221 @@ export type GroupEventKind = GroupEventDto["kind"];
 export type NotificationKind = NotificationDto["kind"];
 export type ActivityKind = ActivityItemDto["kind"];
 
+// ---------------------------------------------------------------------------------------------
+// PROVISIONAL — v3 personal savings. Not in docs/openapi.json yet: written from the designs and
+// served by the mock (src/mocks/handlers/savings.ts, every route `notInApi`). When the backend
+// ships these, replace each with its `S["…"]` alias above and let the type errors show the gaps.
+// ---------------------------------------------------------------------------------------------
+
+/** Flexible: withdraw any time, up to the balance. Locked: nothing leaves before `unlocksAt`. */
+export type SavingsPlanKind = "flexible" | "locked";
+
+/** A personal savings goal, held by its own savings contract on Stellar Testnet. */
+export interface SavingsPlanDto {
+	id: string;
+	name: string;
+	kind: SavingsPlanKind;
+	asset: "USDC";
+	targetAmount: string;
+	/** Flexible: the goal date (optional). Locked: the release date (same as `unlocksAt`). */
+	targetDate: string | null;
+	/** Deposits minus withdrawals. */
+	balance: string;
+	/** What may leave now: the balance (flexible, or locked after release), else "0.00". */
+	withdrawable: string;
+	/** Locked plans: when withdrawals open. Null for flexible plans. */
+	unlocksAt: string | null;
+	/** 0–100: balance against the target. */
+	progressPercent: number;
+	/** The wallet that owns the plan: deposits come from it, withdrawals only ever go back to it. */
+	ownerWallet: string;
+	/** The plan's savings contract; null while simulated. */
+	contractId: string | null;
+	/** Where a deposit pays (the saver picks the amount); null = simulated, the API records it directly. */
+	deposit: Omit<PaymentInstructionsDto, "amount"> | null;
+	status: "active" | "closed";
+	createdAt: string;
+}
+
+export interface SavingsTransactionDto {
+	id: string;
+	planId: string;
+	kind: "deposit" | "withdrawal";
+	amount: string;
+	asset: "USDC";
+	/** Null when simulated. */
+	txHash: string | null;
+	createdAt: string;
+}
+
+/** Personal savings across every plan, for the dashboard. */
+export interface SavingsSummaryDto {
+	asset: "USDC";
+	totalSaved: string;
+	withdrawable: string;
+	activePlans: number;
+}
+
+export interface CreateSavingsPlanDto {
+	name: string;
+	kind: SavingsPlanKind;
+	targetAmount: string;
+	/** Required for locked plans (the release date); optional for flexible ones. */
+	targetDate?: string;
+}
+
+/** `POST /savings/plans/{id}/deposits`: the wallet paid `amount` to `plan.deposit`; `txHash` proves it. */
+export interface SavingsDepositDto {
+	amount: string;
+	txHash?: string;
+}
+
+/** `POST /savings/plans/{id}/withdrawals`: signed by the owner wallet; funds go to `ownerWallet`. */
+export interface SavingsWithdrawalDto {
+	amount: string;
+	signature: string;
+}
+
+// ---------------------------------------------------------------------------------------------
+// PROVISIONAL — v3 slot marketplace & takeover. Not in docs/openapi.json yet: written from the
+// designs, served by the mock (src/mocks/handlers/slots.ts, every route `notInApi`). A slot is one
+// round of a running group's payout schedule; its owner receives that round's payout.
+// ---------------------------------------------------------------------------------------------
+
+/** open → pending (a takeover request is under review) → transferred; or cancelled / expired. */
+export type SlotListingStatus = "open" | "pending" | "transferred" | "cancelled" | "expired";
+
+/** voting → approved (the incoming member signs) → transferred; or rejected / expired / withdrawn. */
+export type SlotTakeoverStatus = "voting" | "approved" | "transferred" | "rejected" | "expired" | "withdrawn";
+
+/** One eligibility condition and whether it holds ("Payout has not been received" · ok). */
+export interface SlotCheckDto {
+	label: string;
+	ok: boolean;
+}
+
+/** One remaining round for the slot's owner: a contribution due, and the round that pays the slot. */
+export interface SlotDueDto {
+	/** 0-based, as `CycleDto.round`. */
+	round: number;
+	dueAt: string;
+	amount: string;
+	/** This round pays out to the slot's owner. */
+	payout: boolean;
+}
+
+/** What owning the slot means from now on: what the new owner takes over. */
+export interface SlotTermsDto {
+	contributionAmount: string;
+	frequency: Frequency;
+	customIntervalDays: number | null;
+	/** Contributions still to pay (the current round counts until it's paid). */
+	remainingContributions: number;
+	remainingAmount: string;
+	/** Expected payout: everyone's contribution for the slot's round, after the service charge. */
+	payoutAmount: string;
+	payoutAt: string;
+	lastContributionAt: string | null;
+	schedule: SlotDueDto[];
+}
+
+export interface SlotGroupDto {
+	id: string;
+	name: string;
+	memberCount: number;
+	totalRounds: number;
+	asset: "USDC";
+}
+
+/** A slot offered for takeover (the marketplace, one listing). */
+export interface SlotListingDto {
+	id: string;
+	status: SlotListingStatus;
+	group: SlotGroupDto;
+	/** 0-based round; `slotNumber` = round + 1. */
+	round: number;
+	slotNumber: number;
+	seller: MemberPreviewDto;
+	reason: string | null;
+	createdAt: string;
+	expiresAt: string;
+	terms: SlotTermsDto;
+	/** The caller listed it. */
+	mine: boolean;
+	/** What a request would need now: approvals out of the members who review (all but the seller). */
+	approval: { required: number; eligible: number };
+	/** For anyone but the seller: may they request it, and which conditions hold. */
+	eligibility: { canRequest: boolean; checks: SlotCheckDto[] } | null;
+	/** The request under review or awaiting signature (seen by the seller, the requester and members). */
+	takeover: SlotTakeoverDto | null;
+}
+
+/** One line of a slot's preserved history: contributions made by its owners, and its payout. */
+export interface SlotHistoryItemDto {
+	kind: "contribution" | "payout";
+	member: MemberPreviewDto;
+	amount: string;
+	at: string;
+	/** A payout that hasn't happened yet. */
+	scheduled: boolean;
+	txHash: string | null;
+}
+
+/** A request to take over a slot, its group approval and (once signed) the ownership transfer. */
+export interface SlotTakeoverDto {
+	id: string;
+	listingId: string;
+	status: SlotTakeoverStatus;
+	group: SlotGroupDto;
+	round: number;
+	slotNumber: number;
+	from: MemberPreviewDto;
+	to: MemberPreviewDto;
+	/** The incoming member's wallet: it signs the transfer. */
+	toWallet: string;
+	requestedAt: string;
+	votingEndsAt: string;
+	/** Approvals needed (the group's threshold over `eligible`). */
+	required: number;
+	/** Members who may review: everyone but the current owner. */
+	eligible: number;
+	yes: number;
+	no: number;
+	myVote: "yes" | "no" | null;
+	canVote: boolean;
+	/** The incoming member, once approved and before `signBy`. */
+	canSign: boolean;
+	/** The incoming member, while voting. */
+	canWithdraw: boolean;
+	/** "Incoming member verified": wallet, no slot in this group yet, entry conditions. */
+	checks: SlotCheckDto[];
+	approvedAt: string | null;
+	signBy: string | null;
+	transferredAt: string | null;
+	/** The Soroban transfer; null until transferred (or when simulated). */
+	txHash: string | null;
+	terms: SlotTermsDto;
+	history: SlotHistoryItemDto[];
+}
+
+/** `GET /groups/{id}/slot`: the caller's own slot in a running group, and whether they may list it. */
+export interface MySlotDto {
+	round: number;
+	slotNumber: number;
+	totalRounds: number;
+	paidOut: boolean;
+	terms: SlotTermsDto;
+	canList: boolean;
+	checks: SlotCheckDto[];
+	/** The open (or pending) listing for this slot. */
+	listing: SlotListingDto | null;
+}
+
+export interface CreateSlotListingDto {
+	expiresAt: string;
+	reason?: string;
+}
+
 /**
  * `POST /groups` (multipart). The spec types five of CreateGroupDto's fields as `object`
  * (gracePeriodDays, publicDiscovery, contributionPrivacy, autoApproval, serviceChargePercent),

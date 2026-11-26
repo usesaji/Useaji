@@ -1,6 +1,7 @@
 import { DAY, HOUR, MINUTE } from "@/mocks/clock";
 import { castVote, createProposal, startCycle, tick } from "@/mocks/engine";
-import { inviteCode, stellarAccount, uuid } from "@/mocks/ids";
+import { createListing, requestTakeover } from "@/mocks/slots";
+import { contractId, inviteCode, stellarAccount, txHash, uuid } from "@/mocks/ids";
 import type { MockBot, MockDb, MockGroup, MockUser } from "@/mocks/types";
 
 /**
@@ -17,6 +18,11 @@ import type { MockBot, MockDb, MockGroup, MockUser } from "@/mocks/types";
  * - Campus Savers (Ada is admin): forming, two join requests to review.
  * - Wedding Fund: completed; Ada's payout is in her Saji balance.
  * - Abuja Tech Savers, Ikeja Traders Circle: public groups to discover and join.
+ * - Slot marketplace (v3): in Summer Fund (Ada is a member) Amara listed slot #5 and Dean asked
+ *   for it: three approvals in, Ada's is the deciding one; an earlier transfer (Dami → Fatima) is
+ *   on record. In Community Circle (Ada isn't in it) Dami's slot #7 is open for Ada to request.
+ * - Personal savings (v3): "Travel fund" (flexible, 1,200 of 3,000) and "Laptop fund" (locked,
+ *   800 of 2,000, released in 5 weeks: skip ahead to see it open).
  */
 
 export const DEMO_EMAIL = "demo@usesaji.com";
@@ -110,10 +116,33 @@ export function seed(version: number): MockDb {
 	const yusuf = person("Yusuf", "Abdullahi", { bot: yes });
 	const zainab = person("Zainab", "Lawal", { bot: yes });
 	const bola = person("Bola", "Tinubu", { bot: yes });
+	const amara = person("Amara", "Nnadi", { bot: yes });
+	const dean = person("Dean", "Ogude", { bot: yes });
+	const tola = person("Tola", "Adebayo", { bot: yes });
+	const dami = person("Dami", "Ola", { bot: yes });
 	const admin = person("Saji", "Admin", { email: "admin@usesaji.com", wallet: false });
 	admin.role = "admin";
 
-	const users = [ada, chioma, ibrahim, ngozi, kemi, emeka, tunde, fatima, segun, amaka, yusuf, zainab, bola, admin];
+	const users = [
+		ada,
+		chioma,
+		ibrahim,
+		ngozi,
+		kemi,
+		emeka,
+		tunde,
+		fatima,
+		segun,
+		amaka,
+		yusuf,
+		zainab,
+		bola,
+		amara,
+		dean,
+		tola,
+		dami,
+		admin,
+	];
 
 	const db: MockDb = {
 		version,
@@ -131,6 +160,10 @@ export function seed(version: number): MockDb {
 		events: [],
 		notifications: [],
 		walletBalances: Object.fromEntries(users.filter((u) => u.wallet).map((u) => [u.wallet!.publicKey, "500.00"])),
+		savingsPlans: [],
+		savingsTransactions: [],
+		slotListings: [],
+		slotTakeovers: [],
 	};
 
 	const join = (g: MockGroup, people: MockUser[], adminUser: MockUser) => {
@@ -200,6 +233,21 @@ export function seed(version: number): MockDb {
 	});
 	join(ikeja, [bola, chioma], bola);
 
+	// v3 slot marketplace. Summer Fund approves with 80%: 4 of the 5 members who review a takeover.
+	const summer = group("Summer Fund", now - 100 * DAY, {
+		frequency: "monthly",
+		contributionAmount: "250.00",
+		targetAmount: "1500.00",
+		governance: { thresholdKind: "percent", thresholdValue: 80, votingPeriodHours: 72, executionWindowHours: 48 },
+	});
+	join(summer, [kemi, zainab, segun, dami, amara, ada], kemi);
+
+	const community = group("Community Circle", now - 20 * DAY, {
+		contributionAmount: "100.00",
+		targetAmount: "800.00",
+	});
+	join(community, [ibrahim, yusuf, bola, chioma, tola, ngozi, dami, zainab], ibrahim);
+
 	// The timeline, oldest first. The engine ticks forward to each moment, then it happens.
 	const timeline: [number, () => void][] = [
 		[now - 100 * DAY, () => startCycle(db, wedding, ngozi.id, iso(now - 100 * DAY), [ngozi.id, ada.id, fatima.id])],
@@ -212,6 +260,56 @@ export function seed(version: number): MockDb {
 			() => startCycle(db, lagos, chioma.id, iso(now - 15 * DAY), [chioma.id, ibrahim.id, ngozi.id, ada.id, kemi.id, emeka.id]),
 		],
 		[now - 10 * DAY, () => startCycle(db, family, ada.id, iso(now - 10 * DAY), [fatima.id, ada.id, segun.id, tunde.id])],
+		[
+			now - 95 * DAY,
+			() => startCycle(db, summer, kemi.id, iso(now - 95 * DAY), [kemi.id, zainab.id, segun.id, dami.id, amara.id, ada.id]),
+		],
+		[
+			now - 45 * DAY,
+			() => {
+				// Dami hands slot #4 to Fatima; the members approve and Fatima signs (all simulated).
+				const listing = createListing(
+					db,
+					summer,
+					dami.id,
+					{ expiresAt: iso(now - 38 * DAY), reason: "Moving abroad for work." },
+					iso(now - 45 * DAY),
+				);
+				requestTakeover(db, listing, fatima.id, iso(now - 44 * DAY));
+			},
+		],
+		[
+			now - 16 * DAY,
+			() =>
+				startCycle(db, community, ibrahim.id, iso(now - 16 * DAY), [
+					ibrahim.id,
+					yusuf.id,
+					bola.id,
+					chioma.id,
+					tola.id,
+					ngozi.id,
+					dami.id,
+					zainab.id,
+				]),
+		],
+		[
+			now - 6 * DAY,
+			() => {
+				const listing = createListing(db, community, tola.id, { expiresAt: iso(now - 1 * DAY) }, iso(now - 6 * DAY));
+				requestTakeover(db, listing, emeka.id, iso(now - 5 * DAY));
+			},
+		],
+		[
+			now - 2 * DAY,
+			() =>
+				createListing(
+					db,
+					summer,
+					amara.id,
+					{ expiresAt: iso(now + 8 * DAY), reason: "I need a more flexible savings schedule." },
+					iso(now - 2 * DAY),
+				),
+		],
 		[
 			now - 2 * DAY,
 			() => {
@@ -227,6 +325,25 @@ export function seed(version: number): MockDb {
 		],
 		// From here on Ada acts for herself: she hasn't paid Lagos round 3 or voted on anything new.
 		[now - 1 * DAY - MINUTE, () => delete db.users.find((u) => u.id === ada.id)!.bot],
+		[
+			now - 1 * DAY,
+			() => {
+				// Dean asks for Amara's slot: the simulated members approve, one short of the 4 needed.
+				const listing = db.slotListings.find((l) => l.groupId === summer.id && l.sellerId === amara.id)!;
+				requestTakeover(db, listing, dean.id, iso(now - 1 * DAY));
+			},
+		],
+		[
+			now - 3 * HOUR,
+			() =>
+				createListing(
+					db,
+					community,
+					dami.id,
+					{ expiresAt: iso(now + 6 * DAY), reason: "Switching to a plan that fits my pay dates." },
+					iso(now - 3 * HOUR),
+				),
+		],
 		[
 			now - 2 * HOUR,
 			() =>
@@ -245,12 +362,23 @@ export function seed(version: number): MockDb {
 		],
 	];
 
+	timeline.sort((a, b) => a[0] - b[0]); // oldest first (stable: same-moment steps keep their order)
 	for (const [at, happen] of timeline) {
 		for (let t = at - 30 * DAY; t < at; t += DAY) tick(db, Math.max(t, 0));
 		tick(db, at);
 		happen();
 	}
 	tick(db, now);
+
+	savingsPlan(db, ada, "Travel fund", "flexible", "3000.00", now + 125 * DAY, now - 50 * DAY, [
+		[now - 47 * DAY, "500.00"],
+		[now - 33 * DAY, "400.00"],
+		[now - 19 * DAY, "300.00"],
+	]);
+	savingsPlan(db, ada, "Laptop fund", "locked", "2000.00", now + 35 * DAY, now - 48 * DAY, [
+		[now - 47 * DAY, "500.00"],
+		[now - 19 * DAY, "300.00"],
+	]);
 
 	// Old news is already read.
 	for (const n of db.notifications) if (new Date(n.createdAt).getTime() < now - 3 * DAY) n.readAt = n.createdAt;
@@ -259,3 +387,30 @@ export function seed(version: number): MockDb {
 }
 
 const iso = (t: number) => new Date(t).toISOString();
+
+function savingsPlan(
+	db: MockDb,
+	owner: MockUser,
+	name: string,
+	kind: "flexible" | "locked",
+	targetAmount: string,
+	targetDate: number,
+	createdAt: number,
+	deposits: [number, string][],
+) {
+	const id = uuid();
+	db.savingsPlans.push({
+		id,
+		userId: owner.id,
+		name,
+		kind,
+		targetAmount,
+		targetDate: iso(targetDate),
+		ownerWallet: owner.wallet!.publicKey,
+		contractId: contractId(),
+		createdAt: iso(createdAt),
+	});
+	for (const [at, amount] of deposits) {
+		db.savingsTransactions.push({ id: uuid(), planId: id, kind: "deposit", amount, txHash: txHash(), createdAt: iso(at) });
+	}
+}

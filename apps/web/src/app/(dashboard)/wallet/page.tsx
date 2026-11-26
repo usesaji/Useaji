@@ -9,6 +9,8 @@ import { ACTIVITY_LABEL } from "@/features/activity/components/ActivityCard";
 import { useActivity } from "@/features/activity/hooks";
 import { useOverview } from "@/features/groups/hooks";
 import { SavingsSummaryCard } from "@/features/overview/SavingsSummaryCard";
+import { NoPlansCard, PlanCard } from "@/features/savings/components/SavingsUi";
+import { useSavingsPlans } from "@/features/savings/hooks";
 import { LinkedWalletCard, PayoutsCard, UsefulInsights } from "@/features/wallet/components/WalletSections";
 import { useWallet } from "@/features/wallet/hooks";
 import { dateTime, formatMoney, relative } from "@/lib/format";
@@ -19,6 +21,7 @@ export default function WalletPage() {
 	const wallet = useWallet();
 	const overview = useOverview();
 	const history = useActivity({ limit: 10 });
+	const plans = useSavingsPlans();
 	const now = useNow();
 	const next = overview.data?.nextDue ?? null;
 
@@ -54,6 +57,23 @@ export default function WalletPage() {
 					</div>
 					<UsefulInsights wallet={wallet.data} />
 				</>
+			)}
+
+			{plans.data && (
+				<section>
+					<SectionHeader title="Personal Savings" href={pageRoutes.dashboardRoutes.SAVINGS} />
+					<div className="mt-4 grid gap-4 md:mt-6 md:grid-cols-2">
+						{plans.data.results.length === 0 ? (
+							<NoPlansCard href={pageRoutes.dashboardRoutes.NEW_SAVINGS} />
+						) : (
+							plans.data.results
+								.slice(0, 2)
+								.map((plan, i) => (
+									<PlanCard key={plan.id} plan={plan} index={i} href={pageRoutes.dashboardRoutes.SAVINGS_PLAN(plan.id)} />
+								))
+						)}
+					</div>
+				</section>
 			)}
 
 			<section>

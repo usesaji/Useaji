@@ -89,8 +89,20 @@ export const recipientOf = (group: MockGroup, round: number) => group.cycle?.sch
 
 export const openDefaults = (db: MockDb, groupId: string) => db.defaults.filter((d) => d.groupId === groupId && !d.resolution);
 
+/**
+ * Whether `userId`'s slot has paid `round`. A slot taken over keeps its payments: what the previous
+ * owner paid this round counts for the new one (v3 slot transfers), so nobody pays a round twice.
+ */
 export const paidThisRound = (db: MockDb, groupId: string, round: number, userId: string) =>
-	db.contributions.some((c) => c.groupId === groupId && c.round === round && c.userId === userId);
+	db.contributions.some(
+		(c) =>
+			c.groupId === groupId &&
+			c.round === round &&
+			(c.userId === userId ||
+				db.slotTakeovers.some(
+					(t) => t.groupId === groupId && t.status === "transferred" && t.toId === userId && t.fromId === c.userId,
+				)),
+	);
 
 /** What `userId` has paid into one group. */
 export const totalSavedIn = (db: MockDb, groupId: string, userId: string) =>
@@ -740,9 +752,17 @@ const isBot = (db: MockDb, id: string) => !!userById(db, id)?.bot;
  */
 export function tick(db: MockDb, at: number) {
 	for (let pass = 0; pass < 40; pass++) {
-		if (!step(db, at)) return;
+		const changed = step(db, at);
+		const hooked = tickHooks.map((hook) => hook(db, at)).some(Boolean);
+		if (!changed && !hooked) return;
 	}
 }
+
+/**
+ * More rules that react to time, registered by their own module (v3 slot transfers: mocks/slots.ts),
+ * so the engine doesn't import them. Each returns true when it changed something.
+ */
+export const tickHooks: ((db: MockDb, at: number) => boolean)[] = [];
 
 /** One round of reactions. Returns true when something changed (so another pass may react to it). */
 function step(db: MockDb, at: number): boolean {

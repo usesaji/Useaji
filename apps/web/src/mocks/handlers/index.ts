@@ -4,3 +4,5 @@ import "./wallet";
 import "./groups";
 import "./cycle";
 import "./activity";
+import "./savings";
+import "./slots";

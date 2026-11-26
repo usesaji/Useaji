@@ -39,6 +39,8 @@ export function notificationHref(n: NotificationDto): string | null {
 	const groupId = typeof n.data.groupId === "string" ? n.data.groupId : null;
 	const proposalId = typeof n.data.proposalId === "string" ? n.data.proposalId : null;
 	const routes = pageRoutes.dashboardRoutes;
+	// v3 slot takeovers (provisional): their notifications carry the request's id.
+	if (groupId && typeof n.data.takeoverId === "string") return routes.TAKEOVER(groupId, n.data.takeoverId);
 	switch (n.kind) {
 		case "proposal_created":
 		case "proposal_approved":

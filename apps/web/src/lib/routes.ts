@@ -34,11 +34,24 @@ export const pageRoutes = {
 			`/groups/${id}/recovery/propose?default=${defaultId}&action=${action}`,
 		GROUP_HISTORY: (id: string) => `/groups/${id}/history`,
 		GROUP_EDIT: (id: string) => `/groups/${id}/edit`,
+		/** Slot marketplace & takeover (v3). */
+		MARKETPLACE: "/groups/marketplace",
+		MY_LISTINGS: "/groups/marketplace?mine=1",
+		SLOT_LISTING: (listingId: string) => `/groups/marketplace/${listingId}`,
+		LIST_SLOT: (id: string) => `/groups/${id}/slot/list`,
+		TAKEOVER: (id: string, takeoverId: string) => `/groups/${id}/takeovers/${takeoverId}`,
+		SLOT_TRANSFERS: (id: string) => `/groups/${id}/transfers`,
 
 		ACTIVITY: "/activity",
 		NOTIFICATIONS: "/notifications",
 		SEARCH: (q: string) => `/search?q=${encodeURIComponent(q)}`,
 		WALLET: "/wallet",
+		/** Personal savings (v3): plans, one plan, deposit, withdraw. Under Wallet in the nav. */
+		SAVINGS: "/savings",
+		NEW_SAVINGS: "/savings/new",
+		SAVINGS_PLAN: (id: string) => `/savings/${id}`,
+		SAVINGS_DEPOSIT: (id: string) => `/savings/${id}/deposit`,
+		SAVINGS_WITHDRAW: (id: string) => `/savings/${id}/withdraw`,
 		TRANSACTION: (id: string) => `/transactions/${id}`,
 
 		ME: "/profile",

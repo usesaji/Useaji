@@ -27,4 +27,10 @@ export function stellarAccount() {
 	return "G" + Array.from(values, (b) => BASE32[b % 32]).join("");
 }
 
+/** A Soroban contract id (C + 55 base32 chars), not checksummed. */
+export function contractId() {
+	const values = crypto.getRandomValues(new Uint8Array(55));
+	return "C" + Array.from(values, (b) => BASE32[b % 32]).join("");
+}
+
 export const explorerTx = (hash: string) => `https://stellar.expert/explorer/testnet/tx/${hash}`;

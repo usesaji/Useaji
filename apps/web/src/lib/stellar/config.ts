@@ -24,5 +24,10 @@ export function explorerAccountUrl(address: string) {
 	return `${EXPLORER_BASE}/account/${address}`;
 }
 
+/** Public explorer page for a Soroban contract (a personal savings plan's contract). */
+export function explorerContractUrl(contractId: string) {
+	return `${EXPLORER_BASE}/contract/${contractId}`;
+}
+
 /** GABC…WXYZ */
 export const shortAddress = (address: string) => `${address.slice(0, 4)}…${address.slice(-4)}`;
